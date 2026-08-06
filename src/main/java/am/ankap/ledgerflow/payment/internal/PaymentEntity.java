@@ -98,4 +98,16 @@ class PaymentEntity {
     Money getMerchantNet() {
         return getAmount().minus(getFee());
     }
+
+    String getMerchantRef() {
+        return merchantRef;
+    }
+
+    String getFailureReason() {
+        return failureReason;
+    }
+
+    Instant getCreatedAt() {
+        return createdAt;
+    }
 }
