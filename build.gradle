@@ -63,5 +63,5 @@ tasks.named('test') {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    options.compilerArgs += ['-Xlint:all', '-parameters']
+    options.compilerArgs += ['-Xlint:all', '-Xlint:-serial', '-parameters']
 }

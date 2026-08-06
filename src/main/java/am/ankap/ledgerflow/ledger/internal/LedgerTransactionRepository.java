@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 import java.util.UUID;
 
-interface LedgerAccountRepository extends JpaRepository<LedgerAccountEntity, UUID> {
+interface LedgerTransactionRepository extends JpaRepository<LedgerTransactionEntity, UUID> {
 
-    Optional<LedgerAccountEntity> findByAccountKey(String accountKey);
+    Optional<LedgerTransactionEntity> findByReference(String reference);
 }
