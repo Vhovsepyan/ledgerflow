@@ -1,0 +1,1 @@
+alter table psp_attempt rename column attempt_no to attempts;

@@ -48,6 +48,15 @@ class PaymentEntity {
     @Column(name = "version", nullable = false)
     private long version;
 
+    @Column(name = "psp_reference", length = 255)
+    private String pspReference;
+
+    @Column(name = "verification_attempts", nullable = false)
+    private int verificationAttempts;
+
+    @Column(name = "next_verification_at")
+    private Instant nextVerificationAt;
+
     protected PaymentEntity() {
     }
 
@@ -107,7 +116,37 @@ class PaymentEntity {
         return failureReason;
     }
 
+    void setFailureReason(String failureReason) {
+        this.failureReason = failureReason;
+    }
+
     Instant getCreatedAt() {
         return createdAt;
+    }
+
+    void markPending(PaymentStatus pendingStatus, Instant nextVerificationAt) {
+        transitionTo(pendingStatus);
+        this.nextVerificationAt = nextVerificationAt;
+    }
+
+    void settleAs(PaymentStatus target, String pspReference) {
+        transitionTo(target);
+        if (pspReference != null) {
+            this.pspReference = pspReference;
+        }
+        this.nextVerificationAt = null;
+    }
+
+    void scheduleNextVerification(Instant when) {
+        this.verificationAttempts++;
+        this.nextVerificationAt = when;
+    }
+
+    String getPspReference() {
+        return pspReference;
+    }
+
+    int getVerificationAttempts() {
+        return verificationAttempts;
     }
 }

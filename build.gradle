@@ -55,13 +55,45 @@ dependencyManagement {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'manual'
+    }
     testLogging {
-        events 'failed'
-        exceptionFormat 'full'
+        events = ['failed']
+        exceptionFormat = 'full'
         showCauses = true
         showStackTraces = true
     }
+}
+
+// Slow, narrative tests that drive a real provider over HTTP. Kept out of `test`.
+tasks.register('manualTest', Test) {
+    group = 'verification'
+    description = 'Runs the tests tagged "manual" against the mock PSP.'
+
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+
+    useJUnitPlatform {
+        includeTags 'manual'
+    }
+    testLogging {
+        events = ['passed', 'failed', 'skipped']
+        showStandardStreams = true
+        exceptionFormat = 'full'
+        showCauses = true
+        showStackTraces = true
+    }
+}
+
+// A provider you can poke by hand: ./gradlew mockPsp [-Pport=9090]
+tasks.register('mockPsp', JavaExec) {
+    group = 'application'
+    description = 'Runs the mock PSP standalone so the app can be pointed at it.'
+
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'am.ankap.ledgerflow.psp.MockPsp'
+    args = [(findProperty('port') ?: '9090').toString()]
 }
 
 tasks.withType(JavaCompile).configureEach {

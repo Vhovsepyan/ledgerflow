@@ -34,7 +34,7 @@ class DefaultPspService implements PspService {
     }
 
     @Override
-    public PspResult authorize(String reference, Money amount, String idempotencyKey) {
+    public PspCall authorize(String reference, Money amount, String idempotencyKey) {
         return callWithRetries("authorize", () -> {
             PspDtos.AuthorizationResponse response = restClient.post()
                     .uri("/psp/authorizations")
@@ -48,7 +48,7 @@ class DefaultPspService implements PspService {
     }
 
     @Override
-    public PspResult capture(String pspReference, Money amount, String idempotencyKey) {
+    public PspCall capture(String pspReference, Money amount, String idempotencyKey) {
         return callWithRetries("capture", () -> {
             PspDtos.AuthorizationResponse response = restClient.post()
                     .uri("/psp/authorizations/{id}/captures", pspReference)
@@ -61,7 +61,7 @@ class DefaultPspService implements PspService {
     }
 
     @Override
-    public PspResult lookupByReference(String reference) {
+    public PspCall lookupByReference(String reference) {
         return callWithRetries("lookup", () -> {
             PspDtos.AuthorizationResponse response = restClient.get()
                     .uri(uriBuilder -> uriBuilder.path("/psp/authorizations")
@@ -82,18 +82,32 @@ class DefaultPspService implements PspService {
      * Retrying is only safe because every call carries an idempotency key the
      * provider honours — otherwise a retried timeout could charge twice.
      */
-    private PspResult callWithRetries(String operation, Supplier<PspResult> call) {
+    /**
+     * Retries with exponential backoff and jitter, guarded by a circuit breaker.
+     *
+     * Retrying is only safe because every call carries an idempotency key the
+     * provider honours — otherwise a retried timeout could charge twice.
+     */
+    private PspCall callWithRetries(String operation, Supplier<PspResult> call) {
+        long start = System.currentTimeMillis();
         RuntimeException lastFailure = null;
         boolean requestReachedProvider = false;
+        int attemptsMade = 0;
 
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
             try {
-                return circuitBreaker.executeSupplier(call);
+                attemptsMade++;
+                PspResult result = circuitBreaker.executeSupplier(call);
+                return new PspCall(result, attemptsMade, elapsedSince(start));
 
             } catch (CallNotPermittedException e) {
                 // Breaker is open: nothing was sent, so nothing happened.
+                attemptsMade--;
                 log.warn("PSP circuit breaker open, skipping {}", operation);
-                return new PspResult.Failed("Provider circuit breaker is open");
+                return new PspCall(
+                        new PspResult.Failed("Provider circuit breaker is open"),
+                        attemptsMade,
+                        elapsedSince(start));
 
             } catch (ResourceAccessException e) {
                 lastFailure = e;
@@ -114,9 +128,15 @@ class DefaultPspService implements PspService {
         }
 
         String reason = lastFailure == null ? "unknown" : lastFailure.getMessage();
-        return requestReachedProvider
+        PspResult result = requestReachedProvider
                 ? new PspResult.Unknown(reason)
                 : new PspResult.Failed(reason);
+
+        return new PspCall(result, attemptsMade, elapsedSince(start));
+    }
+
+    private static long elapsedSince(long start) {
+        return System.currentTimeMillis() - start;
     }
 
     private Duration backoffFor(int attempt) {
@@ -128,8 +148,7 @@ class DefaultPspService implements PspService {
 
     private static boolean isTimeout(ResourceAccessException e) {
         Throwable cause = e.getCause();
-        return cause instanceof SocketTimeoutException
-                || !(cause instanceof ConnectException);
+        return !(cause instanceof ConnectException);
     }
 
     private static PspResult toResult(PspDtos.AuthorizationResponse response) {

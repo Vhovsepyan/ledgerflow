@@ -55,6 +55,8 @@ logging:
     am.ankap.ledgerflow: DEBUG
 
 ledgerflow:
+  verification:
+    interval: 10s
   psp:
     base-url: ${PSP_BASE_URL:http://localhost:9090}
     connect-timeout: 1s

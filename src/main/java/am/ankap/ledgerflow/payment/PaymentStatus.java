@@ -7,7 +7,9 @@ import java.util.Set;
 public enum PaymentStatus {
 
     CREATED,
+    AUTHORIZATION_PENDING,
     AUTHORIZED,
+    CAPTURE_PENDING,
     CAPTURED,
     FAILED,
     CANCELED,
@@ -17,8 +19,10 @@ public enum PaymentStatus {
             new EnumMap<>(PaymentStatus.class);
 
     static {
-        ALLOWED_TRANSITIONS.put(CREATED, Set.of(AUTHORIZED, FAILED, CANCELED));
-        ALLOWED_TRANSITIONS.put(AUTHORIZED, Set.of(CAPTURED, FAILED, CANCELED));
+        ALLOWED_TRANSITIONS.put(CREATED, Set.of(AUTHORIZATION_PENDING, AUTHORIZED, FAILED, CANCELED));
+        ALLOWED_TRANSITIONS.put(AUTHORIZATION_PENDING, Set.of(AUTHORIZED, FAILED, CANCELED));
+        ALLOWED_TRANSITIONS.put(AUTHORIZED, Set.of(CAPTURE_PENDING, CAPTURED, FAILED, CANCELED));
+        ALLOWED_TRANSITIONS.put(CAPTURE_PENDING, Set.of(CAPTURED, FAILED));
         ALLOWED_TRANSITIONS.put(CAPTURED, Set.of(REFUNDED));
         ALLOWED_TRANSITIONS.put(FAILED, Set.of());
         ALLOWED_TRANSITIONS.put(CANCELED, Set.of());
@@ -31,5 +35,9 @@ public enum PaymentStatus {
 
     public boolean isTerminal() {
         return ALLOWED_TRANSITIONS.get(this).isEmpty();
+    }
+
+    public boolean isPending() {
+        return this == AUTHORIZATION_PENDING || this == CAPTURE_PENDING;
     }
 }

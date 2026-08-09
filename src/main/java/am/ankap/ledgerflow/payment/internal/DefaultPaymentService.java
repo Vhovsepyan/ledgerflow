@@ -1,29 +1,31 @@
 package am.ankap.ledgerflow.payment.internal;
 
-import am.ankap.ledgerflow.ledger.AccountType;
-import am.ankap.ledgerflow.ledger.LedgerService;
-import am.ankap.ledgerflow.ledger.LedgerTransactionRequest;
 import am.ankap.ledgerflow.payment.*;
+import am.ankap.ledgerflow.psp.PspResult;
+import am.ankap.ledgerflow.psp.PspService;
+import am.ankap.ledgerflow.psp.internal.PspCall;
 import am.ankap.ledgerflow.shared.Money;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Currency;
 import java.util.UUID;
 
 @Service
 class DefaultPaymentService implements PaymentService {
 
     private final PaymentRepository paymentRepository;
-    private final LedgerService ledgerService;
     private final FeePolicy feePolicy;
+    private final PaymentStateWriter stateWriter;
+    private final PspService pspService;
 
     DefaultPaymentService(PaymentRepository paymentRepository,
-                          LedgerService ledgerService,
-                          FeePolicy feePolicy) {
+                          FeePolicy feePolicy,
+                          PaymentStateWriter stateWriter,
+                          PspService pspService) {
         this.paymentRepository = paymentRepository;
-        this.ledgerService = ledgerService;
         this.feePolicy = feePolicy;
+        this.stateWriter = stateWriter;
+        this.pspService = pspService;
     }
 
     @Override
@@ -32,60 +34,44 @@ class DefaultPaymentService implements PaymentService {
         Money fee = feePolicy.feeFor(command.amount());
         PaymentEntity payment = paymentRepository.save(new PaymentEntity(
                 UUID.randomUUID(), command.merchantId(), command.merchantRef(), command.amount(), fee));
-        return toView(payment);
+        return toView(PaymentSnapshot.of(payment));
     }
 
     @Override
-    @Transactional
     public PaymentView authorize(UUID paymentId) {
-        PaymentEntity payment = require(paymentId);
-        payment.transitionTo(PaymentStatus.AUTHORIZED);
-        return toView(payment);
+        PaymentSnapshot pending = stateWriter.markPending(paymentId, PaymentStatus.AUTHORIZATION_PENDING);
+
+        PspCall call = pspService.authorize(
+                "payment-" + paymentId, pending.amount(), "auth:" + paymentId);
+
+        stateWriter.recordAttempt(paymentId, "AUTHORIZE", call);
+        return toView(stateWriter.applyAuthorizeResult(paymentId, call.result()));
     }
 
     @Override
-    @Transactional
     public PaymentView capture(UUID paymentId) {
-        PaymentEntity payment = require(paymentId);
-        payment.transitionTo(PaymentStatus.CAPTURED);
+        PaymentSnapshot pending = stateWriter.markPending(paymentId, PaymentStatus.CAPTURE_PENDING);
 
-        Currency currency = payment.getAmount().currency();
-        openAccountsIfNeeded(payment.getMerchantId(), currency);
+        if (pending.pspReference() == null) {
+            throw new IllegalStateException("Payment %s has no provider reference".formatted(paymentId));
+        }
 
-        ledgerService.post(LedgerTransactionRequest
-                .reference("payment:%s:capture".formatted(payment.getId()))
-                .description("Capture payment " + payment.getId())
-                .debit(LedgerAccounts.pspClearing(currency), payment.getAmount())
-                .credit(LedgerAccounts.merchantPayable(payment.getMerchantId(), currency),
-                        payment.getMerchantNet())
-                .credit(LedgerAccounts.feeRevenue(currency), payment.getFee())
-                .build());
+        PspCall call = pspService.capture(
+                pending.pspReference(), pending.amount(), "capture:" + paymentId);
 
-        return toView(payment);
+        stateWriter.recordAttempt(paymentId, "CAPTURE", call);
+        return toView(stateWriter.applyCaptureResult(paymentId, call.result()));
     }
 
     @Override
-    @Transactional(readOnly = true)
     public PaymentView findById(UUID paymentId) {
-        return toView(require(paymentId));
+        return toView(stateWriter.snapshot(paymentId));
     }
 
-    private void openAccountsIfNeeded(UUID merchantId, Currency currency) {
-        ledgerService.openAccount(LedgerAccounts.pspClearing(currency), AccountType.ASSET, currency);
-        ledgerService.openAccount(LedgerAccounts.merchantPayable(merchantId, currency),
-                AccountType.LIABILITY, currency);
-        ledgerService.openAccount(LedgerAccounts.feeRevenue(currency), AccountType.REVENUE, currency);
-    }
-
-    private PaymentEntity require(UUID paymentId) {
-        return paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new PaymentNotFoundException(paymentId));
-    }
-
-    private PaymentView toView(PaymentEntity payment) {
+    private static PaymentView toView(PaymentSnapshot snapshot) {
         return new PaymentView(
-                payment.getId(), payment.getMerchantId(), payment.getMerchantRef(),
-                payment.getStatus(), payment.getAmount(), payment.getFee(),
-                payment.getMerchantNet(), payment.getFailureReason(), payment.getCreatedAt());
+                snapshot.id(), snapshot.merchantId(), snapshot.merchantRef(),
+                snapshot.status(), snapshot.amount(), snapshot.fee(),
+                snapshot.merchantNet(), snapshot.failureReason(), snapshot.createdAt());
     }
 }

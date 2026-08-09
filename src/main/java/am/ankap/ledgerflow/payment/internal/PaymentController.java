@@ -50,13 +50,22 @@ class PaymentController {
     }
 
     @PostMapping("/{paymentId}/authorize")
-    PaymentResponse authorize(@PathVariable UUID paymentId) {
-        return PaymentResponse.from(paymentService.authorize(paymentId));
+    ResponseEntity<PaymentResponse> authorize(@PathVariable UUID paymentId) {
+        PaymentResponse response = PaymentResponse.from(paymentService.authorize(paymentId));
+        return respond(response);
     }
 
     @PostMapping("/{paymentId}/capture")
-    PaymentResponse capture(@PathVariable UUID paymentId) {
-        return PaymentResponse.from(paymentService.capture(paymentId));
+    ResponseEntity<PaymentResponse> capture(@PathVariable UUID paymentId) {
+        PaymentResponse response = PaymentResponse.from(paymentService.capture(paymentId));
+        return respond(response);
+    }
+
+    private static ResponseEntity<PaymentResponse> respond(PaymentResponse response) {
+        HttpStatus status = response.status().isPending() ? HttpStatus.ACCEPTED : HttpStatus.OK;
+        return ResponseEntity.status(status)
+                .header("Retry-After", "15")
+                .body(response);
     }
 
     @GetMapping("/{paymentId}")
