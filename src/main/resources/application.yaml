@@ -53,3 +53,12 @@ logging:
   level:
     root: INFO
     am.ankap.ledgerflow: DEBUG
+
+ledgerflow:
+  psp:
+    base-url: ${PSP_BASE_URL:http://localhost:9090}
+    connect-timeout: 1s
+    read-timeout: 2s
+    max-attempts: 3
+    initial-backoff: 200ms
+    max-backoff: 2s
