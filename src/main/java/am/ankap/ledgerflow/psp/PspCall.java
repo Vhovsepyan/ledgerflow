@@ -1,6 +1,4 @@
-package am.ankap.ledgerflow.psp.internal;
-
-import am.ankap.ledgerflow.psp.PspResult;
+package am.ankap.ledgerflow.psp;
 
 /**
  * A completed provider interaction.

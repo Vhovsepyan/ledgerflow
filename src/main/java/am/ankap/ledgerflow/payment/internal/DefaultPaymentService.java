@@ -1,9 +1,8 @@
 package am.ankap.ledgerflow.payment.internal;
 
 import am.ankap.ledgerflow.payment.*;
-import am.ankap.ledgerflow.psp.PspResult;
 import am.ankap.ledgerflow.psp.PspService;
-import am.ankap.ledgerflow.psp.internal.PspCall;
+import am.ankap.ledgerflow.psp.PspCall;
 import am.ankap.ledgerflow.shared.Money;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

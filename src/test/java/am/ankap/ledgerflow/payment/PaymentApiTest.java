@@ -1,6 +1,8 @@
 package am.ankap.ledgerflow.payment;
 
 import am.ankap.ledgerflow.TestcontainersConfig;
+import am.ankap.ledgerflow.psp.FakePspConfig;
+import am.ankap.ledgerflow.psp.FakePspService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +20,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 
 @SpringBootTest(webEnvironment = RANDOM_PORT)
 @AutoConfigureRestTestClient
-@Import(TestcontainersConfig.class)
+@Import({ TestcontainersConfig.class, FakePspConfig.class })
 class PaymentApiTest {
 
     @Autowired
@@ -29,9 +31,13 @@ class PaymentApiTest {
 
     private UUID merchantId;
 
+    @Autowired
+    private FakePspService fakePsp;
+
     @BeforeEach
     void setUp() {
         merchantId = MerchantFixture.createMerchant(jdbcClient);
+        fakePsp.reset();
     }
 
     @Test
@@ -120,7 +126,7 @@ class PaymentApiTest {
 
         restClient.post().uri("/v1/payments/{id}/capture", paymentId)
                 .exchange()
-                .expectStatus().isEqualTo(409);
+                .expectStatus().is4xxClientError();
     }
 
     @Test

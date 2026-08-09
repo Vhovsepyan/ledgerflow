@@ -1,5 +1,6 @@
 package am.ankap.ledgerflow.psp.internal;
 
+import am.ankap.ledgerflow.psp.PspCall;
 import am.ankap.ledgerflow.psp.PspResult;
 import am.ankap.ledgerflow.psp.PspService;
 import am.ankap.ledgerflow.shared.Money;
@@ -13,7 +14,6 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.net.ConnectException;
-import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
@@ -78,13 +78,9 @@ class DefaultPspService implements PspService {
 
     /**
      * Retries with exponential backoff and jitter, guarded by a circuit breaker.
-     *
      * Retrying is only safe because every call carries an idempotency key the
      * provider honours — otherwise a retried timeout could charge twice.
-     */
-    /**
      * Retries with exponential backoff and jitter, guarded by a circuit breaker.
-     *
      * Retrying is only safe because every call carries an idempotency key the
      * provider honours — otherwise a retried timeout could charge twice.
      */

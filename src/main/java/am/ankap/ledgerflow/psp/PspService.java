@@ -1,6 +1,5 @@
 package am.ankap.ledgerflow.psp;
 
-import am.ankap.ledgerflow.psp.internal.PspCall;
 import am.ankap.ledgerflow.shared.Money;
 
 public interface PspService {

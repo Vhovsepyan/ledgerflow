@@ -6,7 +6,7 @@ import am.ankap.ledgerflow.ledger.LedgerTransactionRequest;
 import am.ankap.ledgerflow.payment.PaymentNotFoundException;
 import am.ankap.ledgerflow.payment.PaymentStatus;
 import am.ankap.ledgerflow.psp.PspResult;
-import am.ankap.ledgerflow.psp.internal.PspCall;
+import am.ankap.ledgerflow.psp.PspCall;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

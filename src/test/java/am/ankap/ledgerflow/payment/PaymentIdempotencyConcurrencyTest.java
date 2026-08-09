@@ -1,6 +1,9 @@
 package am.ankap.ledgerflow.payment;
 
 import am.ankap.ledgerflow.TestcontainersConfig;
+import am.ankap.ledgerflow.psp.FakePspConfig;
+import am.ankap.ledgerflow.psp.FakePspService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
@@ -19,7 +22,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 
 @SpringBootTest(webEnvironment = RANDOM_PORT)
 @AutoConfigureRestTestClient
-@Import(TestcontainersConfig.class)
+@Import({ TestcontainersConfig.class, FakePspConfig.class })
 class PaymentIdempotencyConcurrencyTest {
 
     private static final int PARALLEL_REQUESTS = 20;
@@ -29,6 +32,14 @@ class PaymentIdempotencyConcurrencyTest {
 
     @Autowired
     private JdbcClient jdbcClient;
+
+    @Autowired
+    private FakePspService fakePsp;
+
+    @BeforeEach
+    void setUp() {
+        fakePsp.reset();
+    }
 
     @Test
     void concurrentIdenticalRequestsCreateExactlyOnePayment() throws InterruptedException {
