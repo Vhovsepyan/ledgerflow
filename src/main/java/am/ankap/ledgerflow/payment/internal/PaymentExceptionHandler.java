@@ -6,6 +6,7 @@ import am.ankap.ledgerflow.payment.PaymentNotFoundException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -17,12 +18,13 @@ class PaymentExceptionHandler {
     private static final String BASE = "https://ledgerflow.dev/errors/";
 
     @ExceptionHandler(IdempotencyKeyInUseException.class)
-    ProblemDetail handleKeyInUse(IdempotencyKeyInUseException e, HttpHeaders headers) {
-        headers.add("Retry-After", "1");
+    ResponseEntity<ProblemDetail> handleKeyInUse(IdempotencyKeyInUseException e) {
         ProblemDetail problem = problem(HttpStatus.CONFLICT, "Request in progress", e.getMessage(),
                 "idempotency-key-in-use");
         problem.setProperty("retryable", true);
-        return problem;
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .header("Retry-After", "1")
+                .body(problem);
     }
 
     @ExceptionHandler(IdempotencyKeyConflictException.class)
