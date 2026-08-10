@@ -64,3 +64,5 @@ ledgerflow:
     max-attempts: 3
     initial-backoff: 200ms
     max-backoff: 2s
+  outbox:
+    poll-interval: 1s
