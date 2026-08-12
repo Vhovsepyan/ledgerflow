@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
 import java.util.List;
@@ -23,6 +24,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 @SpringBootTest(webEnvironment = RANDOM_PORT)
 @AutoConfigureRestTestClient
 @Import({ TestcontainersConfig.class, FakePspConfig.class })
+@TestPropertySource(properties = "ledgerflow.kafka.enabled=false")
 class PaymentIdempotencyConcurrencyTest {
 
     private static final int PARALLEL_REQUESTS = 20;

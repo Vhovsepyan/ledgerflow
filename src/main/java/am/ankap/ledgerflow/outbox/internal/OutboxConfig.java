@@ -1,12 +1,15 @@
 package am.ankap.ledgerflow.outbox.internal;
 
 import am.ankap.ledgerflow.outbox.EventPublisher;
-import am.ankap.ledgerflow.outbox.OutboxRecord;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.config.TopicBuilder;
 
 @Configuration(proxyBeanMethods = false)
 class OutboxConfig {
@@ -19,5 +22,15 @@ class OutboxConfig {
     EventPublisher loggingEventPublisher() {
         return record -> log.info("Publishing {} for {} {} (seq {})",
                 record.eventType(), record.aggregateType(), record.aggregateId(), record.sequenceNo());
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "ledgerflow.kafka.enabled", havingValue = "true", matchIfMissing = true)
+    NewTopic paymentEventsTopic(
+            @Value("${ledgerflow.kafka.payment-events-topic:payment-events}") String topic) {
+        return TopicBuilder.name(topic)
+                .partitions(3)
+                .replicas(1)
+                .build();
     }
 }

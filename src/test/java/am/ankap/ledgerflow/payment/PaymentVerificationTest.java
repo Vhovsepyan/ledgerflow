@@ -25,7 +25,10 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 @SpringBootTest(webEnvironment = RANDOM_PORT)
 @AutoConfigureRestTestClient
 @Import({ TestcontainersConfig.class, FakePspConfig.class })
-@TestPropertySource(properties = "ledgerflow.verification.interval=1s")
+@TestPropertySource(properties = {
+        "ledgerflow.verification.interval=1s",
+        "ledgerflow.kafka.enabled=false"
+})
 class PaymentVerificationTest {
 
     @Autowired
