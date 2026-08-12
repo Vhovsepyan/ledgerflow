@@ -3,6 +3,8 @@ package am.ankap.ledgerflow.payment.internal;
 import am.ankap.ledgerflow.ledger.AccountType;
 import am.ankap.ledgerflow.ledger.LedgerService;
 import am.ankap.ledgerflow.ledger.LedgerTransactionRequest;
+import am.ankap.ledgerflow.outbox.OutboxService;
+import am.ankap.ledgerflow.payment.PaymentEvents;
 import am.ankap.ledgerflow.payment.PaymentNotFoundException;
 import am.ankap.ledgerflow.payment.PaymentStatus;
 import am.ankap.ledgerflow.psp.PspResult;
@@ -26,13 +28,16 @@ class PaymentStateWriter {
     private final PaymentRepository paymentRepository;
     private final PspAttemptRepository attemptRepository;
     private final LedgerService ledgerService;
+    private final OutboxService outboxService;
 
     PaymentStateWriter(PaymentRepository paymentRepository,
                        PspAttemptRepository attemptRepository,
-                       LedgerService ledgerService) {
+                       LedgerService ledgerService,
+                       OutboxService outboxService) {
         this.paymentRepository = paymentRepository;
         this.attemptRepository = attemptRepository;
         this.ledgerService = ledgerService;
+        this.outboxService = outboxService;
     }
 
     @Transactional(readOnly = true)
@@ -53,22 +58,32 @@ class PaymentStateWriter {
         PaymentEntity payment = require(paymentId);
 
         switch (result) {
-            case PspResult.Authorized authorized ->
-                    payment.settleAs(PaymentStatus.AUTHORIZED, authorized.pspReference());
-            case PspResult.Captured captured ->
-                    payment.settleAs(PaymentStatus.AUTHORIZED, captured.pspReference());
+            case PspResult.Authorized authorized -> {
+                payment.settleAs(PaymentStatus.AUTHORIZED, authorized.pspReference());
+                appendEvent(payment, PaymentEvents.PaymentAuthorized.TYPE,
+                        PaymentEventFactory.authorized(payment));
+            }
+            case PspResult.Captured captured -> {
+                payment.settleAs(PaymentStatus.AUTHORIZED, captured.pspReference());
+                appendEvent(payment, PaymentEvents.PaymentAuthorized.TYPE,
+                        PaymentEventFactory.authorized(payment));
+            }
             case PspResult.Declined declined -> {
                 payment.settleAs(PaymentStatus.FAILED, declined.pspReference());
                 payment.setFailureReason(declined.reason());
+                appendEvent(payment, PaymentEvents.PaymentFailed.TYPE,
+                        PaymentEventFactory.failed(payment, declined.reason()));
             }
             case PspResult.Failed failed -> {
                 payment.settleAs(PaymentStatus.FAILED, null);
                 payment.setFailureReason(failed.reason());
+                appendEvent(payment, PaymentEvents.PaymentFailed.TYPE,
+                        PaymentEventFactory.failed(payment, failed.reason()));
             }
             case PspResult.Unknown unknown ->
                     log.warn("Payment {} authorization unresolved: {}", paymentId, unknown.reason());
         }
-        return toSnapshot(payment);
+        return PaymentSnapshot.of(payment);
     }
 
     @Transactional
@@ -79,21 +94,27 @@ class PaymentStateWriter {
             case PspResult.Captured captured -> {
                 payment.settleAs(PaymentStatus.CAPTURED, captured.pspReference());
                 postCaptureToLedger(payment);
+                appendEvent(payment, PaymentEvents.PaymentCaptured.TYPE,
+                        PaymentEventFactory.captured(payment));
             }
             case PspResult.Authorized ignored ->
                     log.warn("Payment {} capture not applied by provider yet", paymentId);
             case PspResult.Declined declined -> {
                 payment.settleAs(PaymentStatus.FAILED, declined.pspReference());
                 payment.setFailureReason(declined.reason());
+                appendEvent(payment, PaymentEvents.PaymentFailed.TYPE,
+                        PaymentEventFactory.failed(payment, declined.reason()));
             }
             case PspResult.Failed failed -> {
                 payment.settleAs(PaymentStatus.FAILED, null);
                 payment.setFailureReason(failed.reason());
+                appendEvent(payment, PaymentEvents.PaymentFailed.TYPE,
+                        PaymentEventFactory.failed(payment, failed.reason()));
             }
             case PspResult.Unknown unknown ->
                     log.warn("Payment {} capture unresolved: {}", paymentId, unknown.reason());
         }
-        return toSnapshot(payment);
+        return PaymentSnapshot.of(payment);
     }
 
     @Transactional
@@ -155,5 +176,9 @@ class PaymentStateWriter {
         return new PaymentSnapshot(payment.getId(), payment.getMerchantId(), payment.getMerchantRef(),
                 payment.getStatus(), payment.getAmount(), payment.getFee(), payment.getPspReference(),
                 payment.getFailureReason(), payment.getVerificationAttempts(), payment.getCreatedAt());
+    }
+
+    private void appendEvent(PaymentEntity payment, String eventType, Object payload) {
+        outboxService.append(PaymentEvents.AGGREGATE_TYPE, payment.getId(), eventType, payload);
     }
 }

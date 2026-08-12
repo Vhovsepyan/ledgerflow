@@ -4,12 +4,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.util.UUID;
 
-final class MerchantFixture {
+public final class MerchantFixture {
 
     private MerchantFixture() {
     }
 
-    static UUID createMerchant(JdbcClient jdbcClient) {
+    public static UUID createMerchant(JdbcClient jdbcClient) {
         UUID merchantId = UUID.randomUUID();
         jdbcClient.sql("insert into merchant (id, name) values (:id, :name)")
                 .param("id", merchantId)
