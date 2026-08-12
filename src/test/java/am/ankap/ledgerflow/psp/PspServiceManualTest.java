@@ -65,7 +65,7 @@ class PspServiceManualTest {
         PspCall result = pspService.authorize(reference, Money.parse("50.00", "USD"), reference);
 
         System.out.println("Result: " + result);
-        assertThat(result).isInstanceOf(PspResult.Authorized.class);
+        assertThat(result.result()).isInstanceOf(PspResult.Authorized.class);
     }
 
     @Test
@@ -78,13 +78,13 @@ class PspServiceManualTest {
         long elapsed = System.currentTimeMillis() - start;
 
         System.out.println("Result after " + elapsed + "ms: " + result);
-        assertThat(result).isInstanceOf(PspResult.Unknown.class);
+        assertThat(result.result()).isInstanceOf(PspResult.Unknown.class);
 
         // The provider DID authorize it - we just never heard the answer.
         setChaos(0, 0, 0);
         PspCall truth = pspService.lookupByReference(reference);
         System.out.println("What actually happened: " + truth);
-        assertThat(truth).isInstanceOf(PspResult.Authorized.class);
+        assertThat(truth.result()).isInstanceOf(PspResult.Authorized.class);
     }
 
     @Test
@@ -101,7 +101,7 @@ class PspServiceManualTest {
         PspCall result = pspService.authorize(reference, Money.parse("50.00", "USD"), reference);
         System.out.println("After breaker opens: " + result);
 
-        assertThat(result).isInstanceOf(PspResult.Failed.class);
+        assertThat(result.result()).isInstanceOf(PspResult.Failed.class);
         setChaos(0, 0, 0);
     }
 

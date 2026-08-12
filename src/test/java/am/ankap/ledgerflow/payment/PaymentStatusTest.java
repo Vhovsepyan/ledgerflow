@@ -3,6 +3,7 @@ package am.ankap.ledgerflow.payment;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class PaymentStatusTest {
 
@@ -29,7 +30,10 @@ class PaymentStatusTest {
     @Test
     void everyStatusHasARule() {
         for (PaymentStatus status : PaymentStatus.values()) {
-            assertThat(status.isTerminal() || !status.isTerminal()).isTrue();
+            // A status added to the enum but not to the transition table throws here.
+            assertThatCode(() -> status.canTransitionTo(PaymentStatus.CAPTURED))
+                    .as("%s has no entry in the transition table", status)
+                    .doesNotThrowAnyException();
         }
     }
 }

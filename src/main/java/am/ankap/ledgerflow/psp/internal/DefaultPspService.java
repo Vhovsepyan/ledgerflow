@@ -9,6 +9,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -63,23 +64,26 @@ class DefaultPspService implements PspService {
     @Override
     public PspCall lookupByReference(String reference) {
         return callWithRetries("lookup", () -> {
-            PspDtos.AuthorizationResponse response = restClient.get()
+            ResponseEntity<PspDtos.AuthorizationResponse> response = restClient.get()
                     .uri(uriBuilder -> uriBuilder.path("/psp/authorizations")
                             .queryParam("reference", reference).build())
                     .retrieve()
                     .onStatus(HttpStatusCode::is4xxClientError, (request, r) -> { })
-                    .body(PspDtos.AuthorizationResponse.class);
+                    .toEntity(PspDtos.AuthorizationResponse.class);
 
-            return response == null
-                    ? new PspResult.Failed("No authorization exists for " + reference)
-                    : toResult(response);
+            // A 4xx here is an answer, not a failure: the provider is certain it
+            // never recorded anything under this reference. Decide on the status,
+            // not on the body — some providers say so with an empty body and
+            // others with a JSON error document, and the second one deserializes
+            // into an authorization-shaped object full of nulls.
+            if (response.getStatusCode().is4xxClientError()) {
+                return new PspResult.Failed("No authorization exists for " + reference);
+            }
+            return toResult(response.getBody());
         });
     }
 
     /**
-     * Retries with exponential backoff and jitter, guarded by a circuit breaker.
-     * Retrying is only safe because every call carries an idempotency key the
-     * provider honours — otherwise a retried timeout could charge twice.
      * Retries with exponential backoff and jitter, guarded by a circuit breaker.
      * Retrying is only safe because every call carries an idempotency key the
      * provider honours — otherwise a retried timeout could charge twice.
@@ -150,6 +154,9 @@ class DefaultPspService implements PspService {
     private static PspResult toResult(PspDtos.AuthorizationResponse response) {
         if (response == null) {
             return new PspResult.Unknown("Empty response body");
+        }
+        if (response.status() == null) {
+            return new PspResult.Unknown("Provider response carried no status");
         }
         return switch (response.status()) {
             case "AUTHORIZED" -> new PspResult.Authorized(response.id());
