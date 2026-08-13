@@ -13,7 +13,7 @@ import java.util.Currency;
 import java.util.List;
 
 @Component
-class HttpSettlementSource implements SettlementSource {
+public class HttpSettlementSource implements SettlementSource {
 
     private final RestClient restClient;
 
@@ -33,7 +33,7 @@ class HttpSettlementSource implements SettlementSource {
         return parse(csv);
     }
 
-    static List<SettlementLine> parse(String csv) {
+    public static List<SettlementLine> parse(String csv) {
         List<SettlementLine> lines = new ArrayList<>();
         if (csv == null || csv.isBlank()) {
             return lines;
