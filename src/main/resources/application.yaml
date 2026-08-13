@@ -89,3 +89,5 @@ ledgerflow:
     payment-events-topic: payment-events
   webhook:
     poll-interval: 2s
+  recon:
+    cron: "0 0 2 * * *"
