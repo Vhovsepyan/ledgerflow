@@ -158,7 +158,7 @@ class PaymentStateWriter {
         ledgerService.openAccount(LedgerAccounts.feeRevenue(currency), AccountType.REVENUE, currency);
 
         ledgerService.post(LedgerTransactionRequest
-                .reference("payment:%s:capture".formatted(payment.getId()))
+                .source("payment", payment.getId(), "capture")
                 .description("Capture payment " + payment.getId())
                 .debit(LedgerAccounts.pspClearing(currency), payment.getAmount())
                 .credit(LedgerAccounts.merchantPayable(payment.getMerchantId(), currency),

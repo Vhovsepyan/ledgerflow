@@ -3,6 +3,7 @@ package am.ankap.ledgerflow.ledger;
 import am.ankap.ledgerflow.shared.Money;
 
 import java.util.Currency;
+import java.util.List;
 import java.util.UUID;
 
 public interface LedgerService {
@@ -15,4 +16,7 @@ public interface LedgerService {
 
     /** Current balance, computed from entries. */
     Money balanceOf(String accountKey);
+
+    /** Captured amounts per source, for reconciliation against a provider statement. */
+    List<CapturedAmount> capturedAmounts();
 }

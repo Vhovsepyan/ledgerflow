@@ -50,7 +50,7 @@ class LedgerConcurrencyTest {
                     try {
                         startSignal.await();
                         ledgerService.post(LedgerTransactionRequest
-                                .reference("conc:%s:%d".formatted(suffix, index))
+                                .source("test", UUID.randomUUID(), "conc")
                                 .description("Concurrent post " + index)
                                 .debit(clearing, Money.of(AMOUNT_MINOR, "USD"))
                                 .credit(payable, Money.of(AMOUNT_MINOR, "USD"))

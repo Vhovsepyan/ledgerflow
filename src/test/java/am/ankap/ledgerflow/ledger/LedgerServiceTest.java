@@ -33,7 +33,7 @@ class LedgerServiceTest {
         ledgerService.openAccount(payable, AccountType.LIABILITY, USD);
         ledgerService.openAccount(fees, AccountType.REVENUE, USD);
 
-        ledgerService.post(LedgerTransactionRequest.reference("capture:" + suffix)
+        ledgerService.post(LedgerTransactionRequest.source("test", UUID.randomUUID(), "capture")
                 .description("Capture 50.00 with 1.75 fee")
                 .debit(clearing, Money.parse("50.00", "USD"))
                 .credit(payable, Money.parse("48.25", "USD"))
@@ -47,7 +47,7 @@ class LedgerServiceTest {
 
     @Test
     void refusesUnbalancedTransaction() {
-        assertThatThrownBy(() -> LedgerTransactionRequest.reference("bad")
+        assertThatThrownBy(() -> LedgerTransactionRequest.source("test", UUID.randomUUID(), "bad")
                 .debit("a", Money.parse("50.00", "USD"))
                 .credit("b", Money.parse("40.00", "USD"))
                 .build())
@@ -56,7 +56,7 @@ class LedgerServiceTest {
 
     @Test
     void refusesNegativeAmountsAtCallSite() {
-        assertThatThrownBy(() -> LedgerTransactionRequest.reference("bad")
+        assertThatThrownBy(() -> LedgerTransactionRequest.source("test", UUID.randomUUID(), "bad")
                 .debit("a", Money.of(-100L, "USD")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -70,7 +70,10 @@ class LedgerServiceTest {
         ledgerService.openAccount(clearing, AccountType.ASSET, USD);
         ledgerService.openAccount(payable, AccountType.LIABILITY, USD);
 
-        LedgerTransactionRequest request = LedgerTransactionRequest.reference("capture:" + suffix)
+        UUID sourceId = UUID.randomUUID();
+
+        LedgerTransactionRequest request = LedgerTransactionRequest
+                .source("test", sourceId, "capture")
                 .description("Capture 10.00")
                 .debit(clearing, Money.parse("10.00", "USD"))
                 .credit(payable, Money.parse("10.00", "USD"))
@@ -88,20 +91,21 @@ class LedgerServiceTest {
         String suffix = UUID.randomUUID().toString();
         String clearing = "PSP_CLEARING:USD:" + suffix;
         String payable = "MERCHANT_PAYABLE:m-8:USD:" + suffix;
-        String reference = "capture:" + suffix;
+        UUID sourceId = UUID.randomUUID();
 
         ledgerService.openAccount(clearing, AccountType.ASSET, USD);
         ledgerService.openAccount(payable, AccountType.LIABILITY, USD);
 
-        ledgerService.post(LedgerTransactionRequest.reference(reference)
+        ledgerService.post(LedgerTransactionRequest.source("test", sourceId, "capture")
                 .debit(clearing, Money.parse("10.00", "USD"))
                 .credit(payable, Money.parse("10.00", "USD"))
                 .build());
 
-        assertThatThrownBy(() -> ledgerService.post(LedgerTransactionRequest.reference(reference)
-                .debit(clearing, Money.parse("99.00", "USD"))
-                .credit(payable, Money.parse("99.00", "USD"))
-                .build()))
+        assertThatThrownBy(() -> ledgerService.post(
+                LedgerTransactionRequest.source("test", sourceId, "capture")
+                        .debit(clearing, Money.parse("99.00", "USD"))
+                        .credit(payable, Money.parse("99.00", "USD"))
+                        .build()))
                 .isInstanceOf(ConflictingTransactionException.class);
     }
 }

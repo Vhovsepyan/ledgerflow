@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * A balanced set of entries, ready to post.
@@ -16,21 +17,43 @@ import java.util.Objects;
 public final class LedgerTransactionRequest {
 
     private final String reference;
+    private final String sourceType;
+    private final UUID sourceId;
+    private final String sourceOperation;
     private final String description;
     private final List<EntryLine> entries;
 
-    private LedgerTransactionRequest(String reference, String description, List<EntryLine> entries) {
-        this.reference = reference;
-        this.description = description;
-        this.entries = List.copyOf(entries);
+    private LedgerTransactionRequest(Builder builder) {
+        this.reference = builder.reference;
+        this.sourceType = builder.sourceType;
+        this.sourceId = builder.sourceId;
+        this.sourceOperation = builder.sourceOperation;
+        this.description = builder.description;
+        this.entries = List.copyOf(builder.entries);
     }
 
-    public static Builder reference(String reference) {
-        return new Builder(reference);
+    /**
+     * Identifies what caused this transaction. The reference is derived from it,
+     * so no caller builds or parses reference strings by hand.
+     */
+    public static Builder source(String sourceType, UUID sourceId, String operation) {
+        return new Builder(sourceType, sourceId, operation);
     }
 
     public String getReference() {
         return reference;
+    }
+
+    public String getSourceType() {
+        return sourceType;
+    }
+
+    public UUID getSourceId() {
+        return sourceId;
+    }
+
+    public String getSourceOperation() {
+        return sourceOperation;
     }
 
     public String getDescription() {
@@ -44,11 +67,17 @@ public final class LedgerTransactionRequest {
     public static final class Builder {
 
         private final String reference;
+        private final String sourceType;
+        private final UUID sourceId;
+        private final String sourceOperation;
         private final List<EntryLine> entries = new ArrayList<>();
         private String description = "";
 
-        private Builder(String reference) {
-            this.reference = Objects.requireNonNull(reference, "reference must not be null");
+        private Builder(String sourceType, UUID sourceId, String operation) {
+            this.sourceType = Objects.requireNonNull(sourceType, "sourceType must not be null");
+            this.sourceId = Objects.requireNonNull(sourceId, "sourceId must not be null");
+            this.sourceOperation = Objects.requireNonNull(operation, "operation must not be null");
+            this.reference = "%s:%s:%s".formatted(sourceType, sourceId, operation);
         }
 
         public Builder description(String description) {
@@ -75,7 +104,7 @@ public final class LedgerTransactionRequest {
                 throw new IllegalStateException("A transaction needs at least two entries");
             }
             requireBalanced();
-            return new LedgerTransactionRequest(reference, description, entries);
+            return new LedgerTransactionRequest(this);
         }
 
         private void requireBalanced() {

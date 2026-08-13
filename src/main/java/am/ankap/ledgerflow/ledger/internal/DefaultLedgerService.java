@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Currency;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,7 +51,8 @@ class DefaultLedgerService implements LedgerService {
 
         UUID transactionId = UUID.randomUUID();
         transactionRepository.save(new LedgerTransactionEntity(
-                transactionId, request.getReference(), request.getDescription(), entriesHash));
+                transactionId, request.getReference(), request.getDescription(), entriesHash,
+                request.getSourceType(), request.getSourceId(), request.getSourceOperation()));
 
         for (EntryLine line : request.getEntries()) {
             LedgerAccountEntity account = requireAccount(line.accountKey());
@@ -66,6 +68,12 @@ class DefaultLedgerService implements LedgerService {
         LedgerAccountEntity account = requireAccount(accountKey);
         long total = entryRepository.sumAmountMinorByAccountId(account.getId());
         return new Money(total, account.getCurrency());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CapturedAmount> capturedAmounts() {
+        return entryRepository.findCapturedAmounts("payment");
     }
 
     private LedgerAccountEntity requireAccount(String accountKey) {

@@ -59,7 +59,7 @@ class LedgerDatabaseConstraintsTest {
         ledgerService.openAccount(payable, AccountType.LIABILITY, USD);
 
         UUID transactionId = ledgerService.post(LedgerTransactionRequest
-                .reference("immutable:" + suffix)
+                .source("test", UUID.randomUUID(), "immutable")
                 .description("Immutability check")
                 .debit(clearing, Money.parse("10.00", "USD"))
                 .credit(payable, Money.parse("10.00", "USD"))
@@ -82,7 +82,7 @@ class LedgerDatabaseConstraintsTest {
         ledgerService.openAccount(payable, AccountType.LIABILITY, USD);
 
         UUID transactionId = ledgerService.post(LedgerTransactionRequest
-                .reference("nodelete:" + suffix)
+                .source("test", UUID.randomUUID(), "nodelete")
                 .description("Delete check")
                 .debit(clearing, Money.parse("10.00", "USD"))
                 .credit(payable, Money.parse("10.00", "USD"))
