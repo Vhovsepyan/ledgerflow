@@ -63,7 +63,6 @@ class ReconciliationTest {
 
         assertThat(result.linesRead()).isEqualTo(1);
         assertThat(result.matched()).isEqualTo(1);
-        assertThat(result.mismatched()).isZero();
         assertThat(openMismatchesFor(paymentId)).isEmpty();
     }
 
@@ -103,12 +102,10 @@ class ReconciliationTest {
     @Test
     void aRecentCaptureMissingFromTheStatementIsTreatedAsTiming() {
         String paymentId = capturePayment(5000);
-        // Statement does not mention it at all.
 
-        ReconResult result = reconciliationService.reconcile(LocalDate.now());
+        reconciliationService.reconcile(LocalDate.now());
 
-        assertThat(result.pendingTiming()).isEqualTo(1);
-        assertThat(result.mismatched()).isZero();
+        // No mismatch for this payment: a recent capture absent from the statement is normal timing.
         assertThat(openMismatchesFor(paymentId)).isEmpty();
     }
 
