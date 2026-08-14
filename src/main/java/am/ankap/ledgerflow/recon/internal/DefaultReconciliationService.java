@@ -12,10 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 class DefaultReconciliationService implements ReconciliationService {
@@ -35,19 +32,21 @@ class DefaultReconciliationService implements ReconciliationService {
     private final ReconMismatchRepository mismatchRepository;
     private final EvidenceCollector evidenceCollector;
     private final JdbcClient jdbcClient;
+    private final SettlementPoster settlementPoster;
 
     DefaultReconciliationService(SettlementSource settlementSource,
                                  LedgerService ledgerService,
                                  ReconRunRepository runRepository,
                                  ReconMismatchRepository mismatchRepository,
                                  EvidenceCollector evidenceCollector,
-                                 JdbcClient jdbcClient) {
+                                 JdbcClient jdbcClient, SettlementPoster settlementPoster) {
         this.settlementSource = settlementSource;
         this.ledgerService = ledgerService;
         this.runRepository = runRepository;
         this.mismatchRepository = mismatchRepository;
         this.evidenceCollector = evidenceCollector;
         this.jdbcClient = jdbcClient;
+        this.settlementPoster = settlementPoster;
     }
 
     @Override
@@ -59,6 +58,8 @@ class DefaultReconciliationService implements ReconciliationService {
             List<SettlementLine> statement = settlementSource.linesFor(settlementDate);
             Map<UUID, CapturedAmount> ledgerByPayment = new HashMap<>();
             ledgerService.capturedAmounts().forEach(c -> ledgerByPayment.put(c.sourceId(), c));
+
+            List<SettlementLine> matchedLines = new ArrayList<>();
 
             int matched = 0;
             int mismatched = 0;
@@ -83,8 +84,10 @@ class DefaultReconciliationService implements ReconciliationService {
 
                 } else {
                     matched++;
+                    matchedLines.add(line);
                 }
             }
+            settlementPoster.postSettlements(run.getId(), settlementDate, matchedLines);
 
             // Anything left in the map is captured on our side but absent from the statement.
             int pendingTiming = 0;

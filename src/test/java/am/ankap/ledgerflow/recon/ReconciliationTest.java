@@ -140,10 +140,70 @@ class ReconciliationTest {
         assertThat(run.get("finished_at")).isNotNull();
     }
 
+    @Test
+    void matchedLinesAreSettledIntoTheBankAccount() {
+        LocalDate date = LocalDate.now().minusDays(101);
+        String paymentId = capturePayment(5000);
+        settlementSource.add(lineFor(paymentId, 5000, date));
+
+        long bankBefore = balanceOf("BANK:USD");
+        long clearingBefore = balanceOf("PSP_CLEARING:USD");
+
+        reconciliationService.reconcile(date);
+
+        assertThat(balanceOf("BANK:USD") - bankBefore).isEqualTo(5000L);
+        assertThat(balanceOf("PSP_CLEARING:USD") - clearingBefore).isEqualTo(-5000L);
+    }
+
+    @Test
+    void aDisputedAmountIsNotSettled() {
+        LocalDate date = LocalDate.now().minusDays(102);
+        String paymentId = capturePayment(5000);
+        settlementSource.add(lineFor(paymentId, 4990, date));
+
+        long bankBefore = balanceOf("BANK:USD");
+
+        reconciliationService.reconcile(date);
+
+        assertThat(balanceOf("BANK:USD")).isEqualTo(bankBefore);
+    }
+
+    @Test
+    void reRunningTheSameDayDoesNotSettleTwice() {
+        LocalDate date = LocalDate.now().minusDays(103);
+        String paymentId = capturePayment(5000);
+        settlementSource.add(lineFor(paymentId, 5000, date));
+
+        reconciliationService.reconcile(date);
+        long bankAfterFirst = balanceOf("BANK:USD");
+
+        reconciliationService.reconcile(date);
+
+        assertThat(balanceOf("BANK:USD")).isEqualTo(bankAfterFirst);
+    }
+
+    private long balanceOf(String accountKey) {
+        return jdbcClient.sql("""
+                             select coalesce(sum(e.amount_minor), 0)
+                               from ledger_entry e
+                               join ledger_account a on a.id = e.account_id
+                              where a.account_key = :key
+                             """)
+                .param("key", accountKey)
+                .query(Long.class)
+                .single();
+    }
+
     private SettlementLine lineFor(String paymentId, long amountMinor) {
         return new SettlementLine(
                 "payment-" + paymentId, "auth_" + paymentId,
                 Money.of(amountMinor, "USD"), LocalDate.now());
+    }
+
+    private SettlementLine lineFor(String paymentId, long amountMinor, LocalDate date) {
+        return new SettlementLine(
+                "payment-" + paymentId, "auth_" + paymentId,
+                Money.of(amountMinor, "USD"), date);
     }
 
     private String capturePayment(long amountMinor) {
