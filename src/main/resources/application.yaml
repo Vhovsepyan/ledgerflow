@@ -78,12 +78,18 @@ management:
   tracing:
     sampling:
       probability: 1.0
+  otlp:
+    metrics:
+      export:
+        enabled: false
+
 
 logging:
   level:
     root: INFO
     am.ankap.ledgerflow: DEBUG
     org.apache.kafka.clients: WARN
+    io.micrometer.registry.otlp: OFF
   pattern:
     level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-}]"
 

@@ -1,5 +1,6 @@
 package am.ankap.ledgerflow.recon.internal;
 
+import am.ankap.ledgerflow.recon.MismatchType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -21,27 +22,23 @@ class EvidenceCollector {
         this.jdbcClient = jdbcClient;
     }
 
-    Evidence forPayment(UUID paymentId) {
-        if (paymentId == null) {
-            return new Evidence("No payment on our side for this reference.",
-                    "The provider settled something we never created. Check whether the reference "
-                    + "belongs to another environment, or whether a payment was lost before it was stored.");
+    Evidence forPayment(UUID paymentId, MismatchType type) {
+        if (paymentId == null || type == MismatchType.MISSING_IN_LEDGER) {
+            List<Map<String, Object>> attempts = paymentId == null ? List.of() : attemptsFor(paymentId);
+            if (attempts.isEmpty()) {
+                return new Evidence(
+                        "No payment and no provider calls exist on our side for this reference.",
+                        "The provider settled something we have no record of. Check whether the "
+                                + "reference belongs to another environment, or whether a payment was lost "
+                                + "before it was stored.");
+            }
         }
 
-        List<Map<String, Object>> attempts = jdbcClient.sql("""
-                        select operation, attempts, outcome, latency_ms, detail, created_at
-                          from psp_attempt
-                         where payment_id = :id
-                         order by created_at
-                        """)
-                .param("id", paymentId)
-                .query()
-                .listOfRows();
-
+        List<Map<String, Object>> attempts = attemptsFor(paymentId);
         if (attempts.isEmpty()) {
             return new Evidence("No provider calls recorded for this payment.",
-                    "The ledger has a capture but no provider attempt exists. This should not happen; "
-                    + "investigate whether the attempt log failed to write.");
+                    "The ledger has a capture but no provider attempt exists. This should not "
+                            + "happen; investigate whether the attempt log failed to write.");
         }
 
         String story = attempts.stream()
@@ -63,6 +60,18 @@ class EvidenceCollector {
                   + "genuine discrepancy rather than a timing or retry artefact.";
 
         return new Evidence(story, suggestion);
+    }
+
+    private List<Map<String, Object>> attemptsFor(UUID paymentId) {
+        return jdbcClient.sql("""
+                        select operation, attempts, outcome, latency_ms, detail, created_at
+                          from psp_attempt
+                         where payment_id = :id
+                         order by created_at
+                        """)
+                .param("id", paymentId)
+                .query()
+                .listOfRows();
     }
 
     record Evidence(String story, String suggestion) {

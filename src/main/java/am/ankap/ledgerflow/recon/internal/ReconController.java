@@ -49,8 +49,8 @@ class ReconController {
     @GetMapping("/mismatches")
     List<Map<String, Object>> openMismatches() {
         return jdbcClient.sql("""
-                        select reference, mismatch_type, provider_amount_minor, ledger_amount_minor,
-                               currency, suggestion, evidence, created_at
+                        select id, reference, mismatch_type, provider_amount_minor,
+                               ledger_amount_minor, currency, suggestion, evidence, created_at
                           from recon_mismatch
                          where status = 'OPEN'
                          order by created_at desc

@@ -33,13 +33,14 @@ class DefaultReconciliationService implements ReconciliationService {
     private final EvidenceCollector evidenceCollector;
     private final JdbcClient jdbcClient;
     private final SettlementPoster settlementPoster;
+    private final ReconMetrics reconMetrics;
 
     DefaultReconciliationService(SettlementSource settlementSource,
                                  LedgerService ledgerService,
                                  ReconRunRepository runRepository,
                                  ReconMismatchRepository mismatchRepository,
                                  EvidenceCollector evidenceCollector,
-                                 JdbcClient jdbcClient, SettlementPoster settlementPoster) {
+                                 JdbcClient jdbcClient, SettlementPoster settlementPoster, ReconMetrics reconMetrics) {
         this.settlementSource = settlementSource;
         this.ledgerService = ledgerService;
         this.runRepository = runRepository;
@@ -47,6 +48,7 @@ class DefaultReconciliationService implements ReconciliationService {
         this.evidenceCollector = evidenceCollector;
         this.jdbcClient = jdbcClient;
         this.settlementPoster = settlementPoster;
+        this.reconMetrics = reconMetrics;
     }
 
     @Override
@@ -105,6 +107,7 @@ class DefaultReconciliationService implements ReconciliationService {
             }
 
             run.complete(statement.size(), matched, mismatched, pendingTiming);
+            reconMetrics.refresh();
             log.info("Reconciliation {} for {}: {} lines, {} matched, {} mismatched, {} pending",
                     run.getId(), settlementDate, statement.size(), matched, mismatched, pendingTiming);
 
@@ -120,7 +123,21 @@ class DefaultReconciliationService implements ReconciliationService {
 
     private void recordMismatch(UUID runId, UUID paymentId, String reference, MismatchType type,
                                 Long providerAmount, Long ledgerAmount, String currency) {
-        EvidenceCollector.Evidence evidence = evidenceCollector.forPayment(paymentId);
+
+        boolean alreadyOpen = jdbcClient.sql("""
+                        select count(*) from recon_mismatch
+                         where reference = :reference and mismatch_type = :type and status = 'OPEN'
+                        """)
+                .param("reference", reference)
+                .param("type", type.name())
+                .query(Long.class)
+                .single() > 0;
+
+        if (alreadyOpen) {
+            return;   // still unresolved from an earlier run
+        }
+
+        EvidenceCollector.Evidence evidence = evidenceCollector.forPayment(paymentId, type);
 
         mismatchRepository.save(new ReconMismatchEntity(
                 runId, paymentId, reference, type,
