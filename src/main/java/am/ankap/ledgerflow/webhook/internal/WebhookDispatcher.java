@@ -2,6 +2,7 @@ package am.ankap.ledgerflow.webhook.internal;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -13,6 +14,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
+/**
+ * Sends queued webhooks and owns their retry state.
+ *
+ * 5xx and timeouts are retried with backoff — the endpoint is broken right now
+ * and may recover. A 4xx (other than 429) is dead-lettered immediately: the
+ * endpoint understood the request and rejected it, so an identical retry will
+ * be rejected identically.
+ */
 @Component
 class WebhookDispatcher {
 
@@ -39,8 +48,17 @@ class WebhookDispatcher {
                 deliveryRepository.lockDueDeliveries(Instant.now(), BATCH_SIZE);
 
         for (WebhookDeliveryEntity delivery : due) {
-            endpointRepository.findById(delivery.getEndpointId())
-                    .ifPresent(endpoint -> attempt(delivery, endpoint));
+            // Log this attempt under the trace of the original API request, even
+            // though it may be minutes later and several retries in.
+            if (delivery.getTraceId() != null) {
+                MDC.put("traceId", delivery.getTraceId());
+            }
+            try {
+                endpointRepository.findById(delivery.getEndpointId())
+                        .ifPresent(endpoint -> attempt(delivery, endpoint));
+            } finally {
+                MDC.remove("traceId");
+            }
         }
     }
 
@@ -64,10 +82,13 @@ class WebhookDispatcher {
 
             if (status.is2xxSuccessful()) {
                 delivery.markDelivered(status.value());
+                log.debug("Webhook delivery {} accepted", delivery.getId());
+
             } else if (status.is4xxClientError() && status.value() != 429) {
-                // The endpoint understood us and said no. Retrying will not help.
                 delivery.markDead(status.value(), "Client error, not retryable");
-                log.warn("Webhook delivery {} dead: endpoint returned {}", delivery.getId(), status.value());
+                log.warn("Webhook delivery {} dead: endpoint returned {}",
+                        delivery.getId(), status.value());
+
             } else {
                 retryOrGiveUp(delivery, status.value(), "HTTP " + status.value());
             }
@@ -83,7 +104,8 @@ class WebhookDispatcher {
             log.error("Webhook delivery {} dead after {} attempts: {}",
                     delivery.getId(), delivery.getAttempts() + 1, error);
         } else {
-            delivery.markRetryable(httpStatus, error, Instant.now().plus(backoffFor(delivery.getAttempts() + 1)));
+            delivery.markRetryable(httpStatus, error,
+                    Instant.now().plus(backoffFor(delivery.getAttempts() + 1)));
         }
     }
 

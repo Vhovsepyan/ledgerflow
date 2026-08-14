@@ -49,6 +49,12 @@ class KafkaEventPublisher implements EventPublisher {
                 .add(header("aggregate-id", record.aggregateId().toString()))
                 .add(header("occurred-at", record.createdAt().toString()));
 
+        if (record.hasTrace()) {
+            // W3C trace context format, so any tracing system can read it.
+            message.headers().add(header("traceparent",
+                    "00-%s-%s-01".formatted(record.traceId(), record.spanId())));
+        }
+
         try {
             kafkaTemplate.send(message).get(SEND_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
             log.debug("Published {} for payment {}", record.eventType(), record.aggregateId());

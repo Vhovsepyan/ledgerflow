@@ -39,6 +39,9 @@ class WebhookDeliveryEntity {
     @Column(name = "last_error", length = 500)
     private String lastError;
 
+    @Column(name = "trace_id", updatable = false, length = 64)
+    private String traceId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -46,17 +49,6 @@ class WebhookDeliveryEntity {
     private Instant deliveredAt;
 
     protected WebhookDeliveryEntity() {
-    }
-
-    WebhookDeliveryEntity(UUID endpointId, UUID eventId, String eventType, String payload) {
-        this.id = UUID.randomUUID();
-        this.endpointId = endpointId;
-        this.eventId = eventId;
-        this.eventType = eventType;
-        this.payload = payload;
-        this.status = "PENDING";
-        this.attempts = 0;
-        this.nextRetryAt = Instant.now();
     }
 
     void markDelivered(int httpStatus) {
@@ -105,6 +97,10 @@ class WebhookDeliveryEntity {
 
     int getAttempts() {
         return attempts;
+    }
+
+    String getTraceId() {
+        return traceId;
     }
 
     private static String truncate(String value) {

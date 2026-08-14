@@ -10,10 +10,16 @@ public record OutboxRecord(
         UUID aggregateId,
         String eventType,
         String payload,
+        String traceId,
+        String spanId,
         Instant createdAt) {
 
     /** Events for the same aggregate must stay in order, so the aggregate is the key. */
     public String partitionKey() {
         return aggregateId.toString();
+    }
+
+    public boolean hasTrace() {
+        return traceId != null && !traceId.isBlank();
     }
 }

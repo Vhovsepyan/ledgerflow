@@ -40,15 +40,24 @@ class OutboxEventEntity {
     @Column(name = "last_error", length = 500)
     private String lastError;
 
+    @Column(name = "trace_id", updatable = false, length = 64)
+    private String traceId;
+
+    @Column(name = "span_id", updatable = false, length = 64)
+    private String spanId;
+
     protected OutboxEventEntity() {
     }
 
-    OutboxEventEntity(String aggregateType, UUID aggregateId, String eventType, String payload) {
+    OutboxEventEntity(String aggregateType, UUID aggregateId, String eventType, String payload,
+                      String traceId, String spanId) {
         this.id = UUID.randomUUID();
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
         this.eventType = eventType;
         this.payload = payload;
+        this.traceId = traceId;
+        this.spanId = spanId;
         this.publishAttempts = 0;
     }
 
@@ -63,6 +72,7 @@ class OutboxEventEntity {
     }
 
     OutboxRecord toRecord() {
-        return new OutboxRecord(id, sequenceNo, aggregateType, aggregateId, eventType, payload, createdAt);
+        return new OutboxRecord(id, sequenceNo, aggregateType, aggregateId, eventType,
+                payload, traceId, spanId, createdAt);
     }
 }

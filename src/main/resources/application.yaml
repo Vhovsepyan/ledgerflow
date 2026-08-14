@@ -75,12 +75,17 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
 
 logging:
   level:
     root: INFO
     am.ankap.ledgerflow: DEBUG
     org.apache.kafka.clients: WARN
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-}]"
 
 ledgerflow:
   verification:
