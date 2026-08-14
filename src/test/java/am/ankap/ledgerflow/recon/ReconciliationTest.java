@@ -182,6 +182,37 @@ class ReconciliationTest {
         assertThat(balanceOf("BANK:USD")).isEqualTo(bankAfterFirst);
     }
 
+    @Test
+    void aResolvedMismatchCannotBeResolvedAgain() {
+        LocalDate date = LocalDate.now().minusDays(104);
+        String paymentId = capturePayment(5000);
+        settlementSource.add(lineFor(paymentId, 4990, date));
+
+        reconciliationService.reconcile(date);
+
+        UUID mismatchId = jdbcClient
+                .sql("select id from recon_mismatch where reference like :pattern")
+                .param("pattern", "%" + paymentId + "%")
+                .query(UUID.class)
+                .single();
+
+        restClient.post().uri("/admin/reconciliation/mismatches/{id}/resolve", mismatchId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                      {"status": "RESOLVED", "resolvedBy": "vahe", "note": "Provider applied a partial capture"}
+                      """)
+                .exchange()
+                .expectStatus().isOk();
+
+        restClient.post().uri("/admin/reconciliation/mismatches/{id}/resolve", mismatchId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                      {"status": "IGNORED", "resolvedBy": "vahe", "note": "second attempt"}
+                      """)
+                .exchange()
+                .expectStatus().is4xxClientError();
+    }
+
     private long balanceOf(String accountKey) {
         return jdbcClient.sql("""
                              select coalesce(sum(e.amount_minor), 0)

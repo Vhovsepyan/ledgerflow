@@ -1,5 +1,6 @@
 package am.ankap.ledgerflow.recon.internal;
 
+import am.ankap.ledgerflow.recon.MismatchStatus;
 import am.ankap.ledgerflow.recon.MismatchType;
 import jakarta.persistence.*;
 
@@ -47,6 +48,15 @@ class ReconMismatchEntity {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "resolved_by", length = 255)
+    private String resolvedBy;
+
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+
+    @Column(name = "resolution_note", length = 1000)
+    private String resolutionNote;
+
     protected ReconMismatchEntity() {
     }
 
@@ -64,5 +74,18 @@ class ReconMismatchEntity {
         this.evidence = evidence;
         this.suggestion = suggestion;
         this.status = "OPEN";
+    }
+
+    void resolve(MismatchStatus newStatus, String resolvedBy, String note) {
+        if (newStatus == MismatchStatus.OPEN) {
+            throw new IllegalArgumentException("A mismatch cannot be reopened");
+        }
+        if (!"OPEN".equals(status)) {
+            throw new IllegalStateException("Mismatch is already " + status);
+        }
+        this.status = newStatus.name();
+        this.resolvedBy = resolvedBy;
+        this.resolutionNote = note;
+        this.resolvedAt = Instant.now();
     }
 }

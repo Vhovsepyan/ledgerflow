@@ -66,6 +66,9 @@ management:
       show-details: always
       probes:
         enabled: true
+      group:
+        readiness:
+          include: db, ping
 
 logging:
   level:

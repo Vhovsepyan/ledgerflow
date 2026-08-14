@@ -2,12 +2,15 @@ package am.ankap.ledgerflow.recon.internal;
 
 import am.ankap.ledgerflow.recon.ReconResult;
 import am.ankap.ledgerflow.recon.ReconciliationService;
+import jakarta.validation.Valid;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/admin/reconciliation")
@@ -15,10 +18,12 @@ class ReconController {
 
     private final ReconciliationService reconciliationService;
     private final JdbcClient jdbcClient;
+    private final ReconMismatchRepository mismatchRepository;
 
-    ReconController(ReconciliationService reconciliationService, JdbcClient jdbcClient) {
+    ReconController(ReconciliationService reconciliationService, JdbcClient jdbcClient, ReconMismatchRepository mismatchRepository) {
         this.reconciliationService = reconciliationService;
         this.jdbcClient = jdbcClient;
+        this.mismatchRepository = mismatchRepository;
     }
 
     /** Runs reconciliation on demand, for a given date. */
@@ -53,5 +58,23 @@ class ReconController {
                         """)
                 .query()
                 .listOfRows();
+    }
+
+    /**
+     * Records a human's decision about a mismatch.
+     * Note this does not adjust the ledger — a correcting entry, if one is
+     * needed, is posted deliberately and separately.
+     */
+    @PostMapping("/mismatches/{mismatchId}/resolve")
+    @Transactional
+    Map<String, Object> resolve(@PathVariable UUID mismatchId,
+                                @Valid @RequestBody ResolveMismatchRequest request) {
+
+        ReconMismatchEntity mismatch = mismatchRepository.findById(mismatchId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown mismatch " + mismatchId));
+
+        mismatch.resolve(request.status(), request.resolvedBy(), request.note());
+
+        return Map.of("id", mismatchId, "status", request.status().name());
     }
 }
