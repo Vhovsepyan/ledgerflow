@@ -2,6 +2,7 @@ package am.ankap.ledgerflow.psp.internal;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -31,7 +32,7 @@ class PspClientConfig {
     }
 
     @Bean
-    CircuitBreaker pspCircuitBreaker() {
+    CircuitBreaker pspCircuitBreaker(MeterRegistry registry) {
         CircuitBreakerConfig config = CircuitBreakerConfig.custom()
                 .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
                 .slidingWindowSize(20)
@@ -45,6 +46,8 @@ class PspClientConfig {
         CircuitBreaker breaker = CircuitBreaker.of("psp", config);
         breaker.getEventPublisher().onStateTransition(event ->
                 log.warn("PSP circuit breaker: {}", event.getStateTransition()));
+        registry.gauge("ledgerflow.psp.circuit_breaker_state", breaker,
+                b -> b.getState().getOrder());
         return breaker;
     }
 }

@@ -42,6 +42,8 @@ dependencies {
 
     developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
 
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
     testImplementation 'org.testcontainers:testcontainers-kafka'
     testImplementation 'org.springframework.boot:spring-boot-starter-kafka-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

@@ -16,7 +16,7 @@ import java.util.Optional;
  * Two things can be wrong: mismatches nobody has looked at, and reconciliation
  * not having run at all. The second is worse, because it looks like silence.
  */
-@Component
+@Component("recon")
 class ReconHealthIndicator implements HealthIndicator {
 
     private static final long OPEN_MISMATCH_WARNING_THRESHOLD = 10;
@@ -48,7 +48,7 @@ class ReconHealthIndicator implements HealthIndicator {
                 || lastRun.get().isBefore(Instant.now().minus(STALE_AFTER));
 
         if (stale) {
-            return Health.down().withDetails(details)
+            return Health.status("WARN").withDetails(details)
                     .withDetail("reason", "Reconciliation has not completed recently").build();
         }
         if (openMismatches >= OPEN_MISMATCH_WARNING_THRESHOLD) {

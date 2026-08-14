@@ -58,6 +58,11 @@ class PaymentExceptionHandler {
         return problem(HttpStatus.BAD_REQUEST, "Invalid request", e.getMessage(), "invalid-request");
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    ProblemDetail handleIllegalState(IllegalStateException e) {
+        return problem(HttpStatus.CONFLICT, "Invalid state", e.getMessage(), "invalid-state");
+    }
+
     private ProblemDetail problem(HttpStatus status, String title, String detail, String type) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setTitle(title);

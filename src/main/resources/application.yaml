@@ -60,7 +60,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info, metrics, modulith
+        include: health, info, metrics, prometheus, modulith
   endpoint:
     health:
       show-details: always
@@ -69,11 +69,18 @@ management:
       group:
         readiness:
           include: db, ping
+        business:
+          include: recon
+          show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 logging:
   level:
     root: INFO
     am.ankap.ledgerflow: DEBUG
+    org.apache.kafka.clients: WARN
 
 ledgerflow:
   verification:
@@ -94,3 +101,5 @@ ledgerflow:
     poll-interval: 2s
   recon:
     cron: "0 0 2 * * *"
+  metrics:
+    refresh-interval: 15s

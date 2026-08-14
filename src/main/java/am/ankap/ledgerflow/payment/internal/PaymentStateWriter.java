@@ -29,15 +29,17 @@ class PaymentStateWriter {
     private final PspAttemptRepository attemptRepository;
     private final LedgerService ledgerService;
     private final OutboxService outboxService;
+    private final PaymentMetrics paymentMetrics;
 
     PaymentStateWriter(PaymentRepository paymentRepository,
                        PspAttemptRepository attemptRepository,
                        LedgerService ledgerService,
-                       OutboxService outboxService) {
+                       OutboxService outboxService, PaymentMetrics paymentMetrics) {
         this.paymentRepository = paymentRepository;
         this.attemptRepository = attemptRepository;
         this.ledgerService = ledgerService;
         this.outboxService = outboxService;
+        this.paymentMetrics = paymentMetrics;
     }
 
     @Transactional(readOnly = true)
@@ -83,6 +85,7 @@ class PaymentStateWriter {
             case PspResult.Unknown unknown ->
                     log.warn("Payment {} authorization unresolved: {}", paymentId, unknown.reason());
         }
+        paymentMetrics.recordOutcome(payment.getStatus());
         return PaymentSnapshot.of(payment);
     }
 
@@ -114,6 +117,7 @@ class PaymentStateWriter {
             case PspResult.Unknown unknown ->
                     log.warn("Payment {} capture unresolved: {}", paymentId, unknown.reason());
         }
+        paymentMetrics.recordOutcome(payment.getStatus());
         return PaymentSnapshot.of(payment);
     }
 
@@ -148,6 +152,7 @@ class PaymentStateWriter {
 
         attemptRepository.save(new PspAttemptEntity(
                 paymentId, operation, call.attempts(), outcome, pspReference, detail, call.latencyMs()));
+        paymentMetrics.recordProviderCall(operation, outcome, call.latencyMs(), call.attempts());
     }
 
     private void postCaptureToLedger(PaymentEntity payment) {
