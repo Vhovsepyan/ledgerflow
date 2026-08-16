@@ -673,10 +673,10 @@ one that existed the whole time. The attempt log tells the story in two rows:
 select operation, attempts, outcome, latency_ms, detail
   from psp_attempt where payment_id = '<id>' order by created_at;
 
- operation | attempts |  outcome   | latency_ms |        detail
------------+----------+------------+------------+----------------------
- AUTHORIZE |        3 | UNKNOWN    |       6xxx | Read timed out
- LOOKUP    |        1 | AUTHORIZED |         5x |
+ operation | attempts |  outcome   | latency_ms |                detail
+-----------+----------+------------+------------+--------------------------------------
+ AUTHORIZE |        3 | UNKNOWN    |       6573 | Error while extracting response for…
+ LOOKUP    |        1 | AUTHORIZED |         11 |
 ```
 
 Three attempts that reached the provider and told us nothing, then one lookup
