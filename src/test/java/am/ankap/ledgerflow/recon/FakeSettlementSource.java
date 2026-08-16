@@ -12,8 +12,13 @@ public class FakeSettlementSource implements SettlementSource {
 
     private final List<SettlementLine> lines = new ArrayList<>();
 
+    private volatile RuntimeException failure;
+
     @Override
     public List<SettlementLine> linesFor(LocalDate settlementDate) {
+        if (failure != null) {
+            throw failure;
+        }
         return List.copyOf(lines);
     }
 
@@ -21,7 +26,13 @@ public class FakeSettlementSource implements SettlementSource {
         lines.add(line);
     }
 
+    /** Makes the fetch blow up, the way an unreachable provider would. */
+    public void failWith(RuntimeException failure) {
+        this.failure = failure;
+    }
+
     public void reset() {
         lines.clear();
+        failure = null;
     }
 }

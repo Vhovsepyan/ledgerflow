@@ -831,9 +831,12 @@ Deliberate, and listed here rather than hidden.
   `capturedAmounts()` is unbounded and returns the whole history, not one day of
   it. Fine at demo scale, wrong at any real scale, and the fix (filtering by
   date) needs capture timestamps in the ledger query.
-- **The whole reconciliation run is one transaction**, and the HTTP call that
-  fetches the statement happens inside it. That is exactly the long-held
-  transaction that decision 15 argues against elsewhere in this codebase.
+- **The comparison phase of reconciliation is still one transaction**, and its
+  size grows with the statement and with the captured history it loads. The
+  provider fetch no longer happens inside it — `reconcile()` orchestrates
+  without a transaction and `ReconWriter` owns the database work — so nothing
+  waits on the network while holding a connection. What remains is bounded by
+  the unbounded `capturedAmounts()` query above, and shrinks when that does.
 
 **Correctness gaps**
 
