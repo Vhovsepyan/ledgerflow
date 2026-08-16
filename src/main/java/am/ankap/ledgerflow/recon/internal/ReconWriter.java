@@ -17,8 +17,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -44,6 +46,16 @@ class ReconWriter {
      * real problems get filed as "pending" and stay invisible.
      */
     private static final Duration SETTLEMENT_LAG = Duration.ofHours(24);
+
+    /**
+     * How far back to look for captures a provider has not settled.
+     *
+     * Like SETTLEMENT_LAG this is a judgement, not a fact: it says "a capture
+     * older than 30 days that is still unsettled is not news, because an earlier
+     * run already filed it". If a provider can genuinely settle later than this
+     * on a first attempt, the window is too short.
+     */
+    private static final Duration UNSETTLED_LOOKBACK = Duration.ofDays(30);
 
     private final LedgerService ledgerService;
     private final ReconRunRepository runRepository;
@@ -88,8 +100,20 @@ class ReconWriter {
      */
     @Transactional
     ReconResult compareAndRecord(UUID runId, LocalDate settlementDate, List<SettlementLine> statement) {
+        // Ask the ledger only about the payments this statement mentions. The
+        // alternative — load every capture ever posted — is proportional to the
+        // lifetime of the business rather than to the size of one statement.
+        Set<UUID> statementIds = new HashSet<>();
+        for (SettlementLine line : statement) {
+            UUID paymentId = paymentIdOf(line.reference());
+            if (paymentId != null) {
+                statementIds.add(paymentId);
+            }
+        }
+
         Map<UUID, CapturedAmount> ledgerByPayment = new HashMap<>();
-        ledgerService.capturedAmounts().forEach(c -> ledgerByPayment.put(c.sourceId(), c));
+        ledgerService.capturedAmountsFor(statementIds)
+                .forEach(c -> ledgerByPayment.put(c.sourceId(), c));
 
         List<SettlementLine> matchedLines = new ArrayList<>();
 
@@ -98,6 +122,8 @@ class ReconWriter {
 
         for (SettlementLine line : statement) {
             UUID paymentId = paymentIdOf(line.reference());
+            // remove(), not get(): a statement that lists the same payment twice
+            // must not match twice and settle it twice.
             CapturedAmount ledgerSide = paymentId == null ? null : ledgerByPayment.remove(paymentId);
 
             if (ledgerSide == null) {
@@ -121,9 +147,16 @@ class ReconWriter {
         }
         settlementPoster.postSettlements(runId, settlementDate, matchedLines);
 
-        // Anything left in the map is captured on our side but absent from the statement.
+        // Captured on our side but absent from the statement. Bounded to a
+        // recent window: a capture older than this that the provider still has
+        // not settled was already reported by an earlier run, and that mismatch
+        // stays OPEN until a human closes it, so nothing is lost by not asking
+        // again.
         int pendingTiming = 0;
-        for (CapturedAmount unsettled : ledgerByPayment.values()) {
+        for (CapturedAmount unsettled : ledgerService.capturedAmountsSince(Instant.now().minus(UNSETTLED_LOOKBACK))) {
+            if (statementIds.contains(unsettled.sourceId())) {
+                continue;   // this statement accounted for it, one way or another
+            }
             if (isWithinSettlementLag(unsettled.sourceId())) {
                 pendingTiming++;   // normal delay, not a discrepancy
             } else {
