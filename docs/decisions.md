@@ -153,6 +153,23 @@ The unique constraint keeps the books correct; the loser gets a raw exception
 rather than the existing id. See the payment idempotency approach below for how
 this is solved properly where it matters more.
 
+**Updated since first written.** The reference is no longer something callers
+build or read. `LedgerTransactionRequest.source(sourceType, sourceId, operation)`
+is the only entry point, and it derives the reference — `payment:<uuid>:capture`
+— from those three. They are also stored as `source_type`, `source_id` and
+`source_operation` columns on `ledger_transaction`, with an index on the first
+two.
+
+The reason is that the reference string had quietly become an interface.
+Reconciliation needed "every capture posted by the payment module", and with only
+a reference it had to `split_part(reference, ':', 2)::uuid` — parsing meaning back
+out of a string that no type checks and no index helps. Any change to the format
+would have broken a query in another module silently. Typed columns make the
+question a normal indexed predicate, and the reference goes back to being what it
+should have been all along: a human-readable label that happens to be unique. The
+migration that added the columns backfills them from the old format, which is the
+last place that parsing appears.
+
 ---
 
 ## 8. Payment state and ledger entries commit in one transaction
@@ -320,6 +337,18 @@ query for "stuck captures" becomes a two-column predicate. Two statuses cost one
 extra row in the transition table and read correctly in a status column during
 an incident.
 
+**The deeper rule: a payment row must never be misleading to someone reading it
+alone.** Rows get read one at a time, out of context — in a `psql` session at two
+in the morning, in a support tool, in a `select *` pasted into a chat. Whatever
+the status column says is what the reader believes. `CAPTURE_PENDING` tells them,
+with no further lookup, that money may have moved and this row is not final.
+`AUTHORIZED` with a `verification_pending = true` two columns to the right tells
+them the payment is settled, and the correction is exactly the thing a tired
+person's eye slides over. The same reasoning is why the failure reason lives on
+the row and why the pending state is written before the provider call rather
+than after: at every point, the row should be readable as a true sentence about
+what is known right now.
+
 **Consequence:** the pending state is committed *before* the provider is called,
 not after the answer comes back. A crash between the two leaves a row that says
 "a call may be in flight", which the verification job picks up. If the status
@@ -409,6 +438,29 @@ be reordered, and the relay has no cheap way to know whether the next event in
 the batch belongs to the same payment as the one that just failed. Stopping is
 the conservative choice.
 
+**What a long-held transaction actually costs in Postgres**, since that is the
+thing all three measures are protecting against, and it is more than "locks are
+held":
+
+- **Rows stay locked.** `FOR UPDATE` holds until commit. Every other worker
+  either blocks or, here, skips — and skipped rows are not processed this tick.
+- **Vacuum stalls globally.** An open transaction pins the oldest running
+  transaction id, and autovacuum cannot remove any row version newer than it —
+  *in any table*, not just the ones this transaction touched. One relay poll
+  wedged on an unresponsive broker keeps dead tuples alive database-wide.
+- **Bloat follows.** Updates that cannot be vacuumed accumulate as dead tuples;
+  tables and indexes grow, and the planner's estimates drift with them. A hot
+  table like `payment` degrades first.
+- **Connections are finite.** The pool is ten. A transaction parked on a network
+  call is a connection nobody else can have, and the same slow broker will be
+  affecting every other poll at the same time.
+- **Replication lag, on a real deployment.** A standby applying WAL must not
+  remove rows a long-running query on the primary might still need; the usual
+  settings turn that into either lag or query cancellation.
+
+None of this is hypothetical at scale, and all of it is invisible in a demo,
+which is exactly why the bound is in the code rather than in someone's memory.
+
 **Cost:** stopping is conservative for *all* aggregates, so one permanently
 failing event blocks everyone else's. Skipping per aggregate is the correct fix
 and is not implemented. Bounded batches also mean throughput is capped at
@@ -478,12 +530,26 @@ never change afterwards. A fat event that is a week old is still *true*; it is
 just old. Fat events are dangerous when they carry mutable state, which these do
 not.
 
-**Cost:** the payload is the public contract, so every field in it is something
-that can never be removed — see the additive-only rule in `PaymentEvents`.
-Larger messages, and any field added for one consumer is visible to all of them.
-That is why nothing operational goes in: retry counts, provider error strings
-and verification attempts stay in `psp_attempt` and the logs, where changing
-them breaks nobody.
+**Cost — and it is a real trade, not a free win: this buys availability
+decoupling by paying in schema coupling.** With a thin event, the contract is one
+id, and the payload can be reshaped whenever the producer likes because nobody
+reads it; the price is that every consumer is *runtime*-coupled to the payment
+API, and an outage there becomes an outage everywhere. With a fat event, no
+consumer needs the producer to be alive — the message alone is enough, forever —
+but the payload is now a published interface. Every field is permanent, every
+field is visible to every consumer whether or not it was meant for them, and
+`merchantNetMinor` cannot be renamed later without breaking a merchant's
+integration nobody here can see.
+
+That is the direction worth paying in for events that describe money: an
+availability dependency fails at the worst possible moment and takes unrelated
+systems with it, while a schema commitment fails at design time, where it can be
+argued about. The additive-only rule in `PaymentEvents` exists precisely because
+this choice makes the schema expensive to change, and it is why nothing
+operational goes in: retry counts, provider error strings and verification
+attempts stay in `psp_attempt` and the logs, where changing them breaks nobody.
+
+Messages are also bigger, which matters at a volume this project will never see.
 
 ---
 
@@ -598,3 +664,167 @@ backoff is used regardless of what the endpoint asked for. And a `DEAD` delivery
 is currently the end of the line: nothing alerts, nothing replays, and nothing
 disables an endpoint that has failed permanently for every event. That is a gap,
 listed in the README, not a decision.
+
+---
+
+## 21. Reconciliation diagnoses automatically and corrects nothing
+
+**Decision:** the nightly run compares the provider's statement against the
+ledger, files every difference as a `recon_mismatch` with evidence and a
+suggestion, and stops there. No mismatch adjusts the ledger. Resolving one
+through the API records a human's decision — status, who, and a note — and posts
+no entries. The only thing resolved automatically is a *timing* difference: a
+capture younger than 24 hours that is absent from the statement is counted as
+`pendingTiming` rather than filed as a problem.
+
+**Why auto-resolve timing at all:** without it the module cries wolf every
+night. A capture made an hour before the statement was cut is *supposed* to be
+missing from it, and a report that is mostly false positives stops being read —
+at which point the real mismatch, on the night it appears, is missed too. Timing
+is also the one difference that can be judged without knowing anything about the
+money: it is a statement about *when* the two systems were sampled, not about
+what either of them claims.
+
+**Why nothing else is automatic:** every other difference is a claim that one of
+two systems is wrong about an amount, and an automatic correction is a guess
+about which — applied to money, at 2am, with nobody watching. If the guess is
+wrong, the ledger now contains a fabricated entry that looks exactly like a real
+one, and the only evidence it was fabricated is a log line. Detection is cheap
+and reversible; correction is neither.
+
+**Who is right when they disagree:** neither, by default, and that split is the
+whole reason a human is required.
+
+- The **provider is authoritative about money that moved.** They hold the bank
+  rails; what they paid out is a fact about the world, and the ledger's opinion
+  does not change it.
+- **We are authoritative about what we asked for and what we owe.** Our capture
+  request, our fee calculation and the merchant's net are our facts, and the
+  provider has no view of the fee split at all.
+- A difference means one of those two chains broke, and *which* one decides the
+  correct repair. A provider settling 10 minor units less might have applied an
+  FX adjustment (their fact, our ledger is wrong), or partially captured after a
+  retry (our request, their execution), or have a bug. Same numbers, three
+  different repairs, and nothing in the amounts distinguishes them.
+
+This is why `EvidenceCollector` exists and why it never returns a verdict. It
+reproduces the provider call history for that payment — every attempt, outcome,
+retry count and latency — and adds one honest reading: if any attempt came back
+`UNKNOWN`, the provider's figure is *probably* right, because an unknown outcome
+is exactly the situation where they applied something we never heard about. If
+every call returned a definite answer, the difference is probably genuine. The
+suggestion is phrased as a suggestion because that is what it is.
+
+**Rejected: auto-correcting differences under a threshold.** Tempting, common,
+and it is how a ten-unit-per-payment leak runs for a year. A rule that silences
+small differences silences precisely the systematic ones, because systematic
+errors are small per payment by nature — volume is what makes them expensive,
+and volume is invisible one row at a time.
+
+**Rejected: auto-correcting `MISSING_IN_LEDGER`** by posting the provider's
+line. A settled payment we have no record of is either a lost payment, another
+environment's traffic pointed at the same provider account, or a reference
+collision. Posting it would make the books balance and destroy the only signal
+that something upstream is broken.
+
+**Cost:** a mismatch sits open until a person looks, and nothing here makes them
+look — that is what the `ledgerflow.recon.open_mismatches` gauge and the `WARN`
+health status are for, and both are passive. At real volume this module ends in
+a triage workflow, not a table. The 24-hour lag is also a hard-coded guess about
+the provider's schedule: if their real lag is longer, genuine problems are filed
+as "pending" and stay invisible, which is the one place this design can hide
+something from itself.
+
+---
+
+## 22. One settlement transaction per currency per day, not one per payment
+
+**Decision:** matched statement lines are grouped by currency and posted as a
+single ledger transaction per currency per settlement date — debit `BANK:<ccy>`,
+credit `PSP_CLEARING:<ccy>` for the total — recorded in `settlement_batch` with
+a unique constraint on `(settlement_date, currency)`.
+
+**Why:** the ledger should describe what actually happened, and what actually
+happened is one payout. The provider does not wire 4,000 individual amounts;
+they send one lump sum and one line appears on the bank statement. Posting 4,000
+ledger transactions would model an event that never occurred, and the first
+person reconciling the ledger against the *bank* would have to re-sum them to
+recover the number they are actually looking at.
+
+**Rejected: one settlement transaction per payment.** It is the obvious shape and
+appears to buy traceability — which payment settled, and when. But the ledger is
+the wrong place to keep that: `recon_run` and `recon_mismatch` already record
+every line of every run, matched or not. The cost is real: 4,000 transactions and
+8,000 entries per day instead of one and two, a `PSP_CLEARING` balance that can
+only be computed by scanning all of them, and a ledger whose row count is driven
+by payment volume rather than by financial events. Traceability that duplicates
+another table is not free.
+
+**Consequence: disputed amounts do not settle.** Only matched lines enter the
+total, so a payment with an `AMOUNT_MISMATCH` moves no money until a human has
+decided what happened. Settling a disputed amount means asserting a number nobody
+has agreed on and then unwinding it with a reversing entry later.
+
+**Why the unique constraint:** reconciliation is re-runnable by design, and a
+re-run must not double-post a payout. `(settlement_date, currency)` is the
+natural key of the real-world event, so the database enforces "one payout per
+currency per day" instead of the application remembering to check.
+
+**Cost:** which payments were in a batch is not visible from the ledger alone —
+that needs `recon_run` and the statement. Amending a settled day is awkward,
+because the unique constraint blocks a corrected re-post and the honest repair is
+a separate adjusting transaction. And netting by currency means a day containing
+a large error and its opposite would still balance at the batch level; only the
+per-line mismatches would show it. That is an argument for reading the mismatch
+table rather than the batch total.
+
+---
+
+## 23. Trace context travels in data, not in a thread-local
+
+**Decision:** `outbox_event` carries `trace_id` and `span_id` columns, Kafka
+messages carry a W3C `traceparent` header, and `webhook_delivery` carries
+`trace_id`. Each stage writes the context down; the next stage restores it into
+the MDC.
+
+**Why:** tracing libraries propagate context in a thread-local, and every hop
+here crosses a boundary where a thread-local does not exist. The relay runs on a
+scheduler thread seconds after the request that produced the event has returned.
+The consumer is a different process, possibly on a different machine. The
+dispatcher may make its eighth attempt forty minutes later. There is no thread to
+inherit from and no call stack to walk back up. The only thing that survives an
+asynchronous boundary is data, so the context has to *become* data at each
+handover — written inside the transaction that caused the event, in the outbox's
+case, so it is exactly as durable as the event itself.
+
+The result is one trace id spanning the API call, the provider request, the
+outbox publish, the Kafka consume and every webhook attempt. Grepping one id
+returns the whole story, including a retry that happened long after the request
+was answered.
+
+**Rejected: letting each stage start its own trace.** That is the default, and
+each trace is individually correct and collectively useless. The question during
+an incident is "what happened to *this payment*", and the answer would be five
+unrelated traces joined by payment id — at which point the trace id may as well
+have been carried properly in the first place.
+
+**Rejected: a Kafka header only, with nothing in the database.** The header
+covers the consume side but not the relay, since the row sits in `outbox_event`
+across a thread boundary before any message exists. It also loses every webhook
+retry, which is re-read from the database minutes later with no message in scope.
+
+**Why W3C `traceparent` rather than a custom header:** it is the format every
+tracing system already understands, so a consumer written by someone else — or a
+sidecar, or a later move to a real collector — reads it without being told.
+`X-Ledgerflow-Trace` would have been the same number of lines and compatible with
+nothing.
+
+**Cost:** the propagation is manual, so it is only as complete as the places that
+remembered to do it, and no test fails when a new hop forgets. It is MDC-based
+rather than real span parenting — the logs correlate, but a tracing UI would not
+show the outbox publish nested under the originating request span the way proper
+context propagation would. Every restore has to be paired with a clear in a
+`finally`, because consumer and scheduler threads are pooled and a leftover id
+would silently attribute the next payment's logs to the previous payment's trace.
+And two columns of trace metadata now live in business tables, which looks like
+pollution right up until the first incident.
