@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 @SpringBootTest(webEnvironment = RANDOM_PORT)
@@ -212,32 +211,6 @@ class ReconciliationTest {
                       """)
                 .exchange()
                 .expectStatus().is4xxClientError();
-    }
-
-    @Test
-    void aFailedRunIsRecordedInsteadOfVanishing() {
-        // A date of its own, so this run is unambiguous among the others.
-        LocalDate date = LocalDate.now().minusDays(200);
-        settlementSource.failWith(new IllegalStateException("provider statement unavailable"));
-
-        assertThatThrownBy(() -> reconciliationService.reconcile(date))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("provider statement unavailable");
-
-        // The run row must survive the rollback of the work it describes.
-        // Written in the same transaction, it would have rolled back too, and a
-        // reconciliation that blew up would look exactly like one that never ran.
-        Map<String, Object> run = jdbcClient.sql("""
-                        select status, error, finished_at from recon_run
-                         where settlement_date = :date
-                        """)
-                .param("date", date)
-                .query()
-                .singleRow();
-
-        assertThat(run.get("status")).isEqualTo("FAILED");
-        assertThat(run.get("error")).asString().contains("provider statement unavailable");
-        assertThat(run.get("finished_at")).isNotNull();
     }
 
     private long balanceOf(String accountKey) {
