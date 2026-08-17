@@ -592,13 +592,14 @@ docker compose exec postgres psql -U ledgerflow -d ledgerflow \
 
 ### The mock provider
 
-`mock-psp` is a separate Spring Boot project in a sibling directory, with its own
-Gradle build. It stands in for the external company: it holds authorizations,
-honours idempotency keys, publishes a daily settlement file, and misbehaves on
-demand.
+`mock-psp/` is a separate Spring Boot project at the repository root, with its
+own Gradle build (it is not a subproject of `ledgerflow` — the root
+`settings.gradle` does not include it). It stands in for the external company:
+it holds authorizations, honours idempotency keys, publishes a daily
+settlement file, and misbehaves on demand.
 
 ```bash
-cd ../mock-psp
+cd mock-psp
 ./gradlew bootRun          # listens on :9090
 # or: docker compose up
 ```
@@ -615,9 +616,19 @@ Two things to know before demoing:
   minor units, and appends a phantom line for a payment that never existed —
   one of each mismatch type, so reconciliation has something to find.
 
-There is also a smaller in-repo mock (`src/test/.../psp/MockPsp.java`, run with
-`./gradlew mockPsp -Pport=9090`) used by `PspServiceManualTest`. It speaks the
-same protocol with chaos off by default, and has no settlement endpoint.
+There is also a smaller in-repo mock, `src/test/.../psp/MockPsp.java`. It is
+not a substitute for `mock-psp/` — the two exist for different jobs:
+
+- **Use `mock-psp/`** for anything this README's demos describe: the timeout
+  scenario, the settlement file, reconciliation finding its injected
+  mismatches. Only `mock-psp/` publishes a settlement file, so it's the only
+  one that can drive that half of the system.
+- **Use in-repo `MockPsp`** when a test needs a real HTTP server without
+  managing an external process. `PspServiceManualTest` starts one in-JVM on a
+  random port per test class via `MockPsp.startOnRandomPort()`, with chaos off
+  by default and no settlement endpoint at all. It can also be run standalone
+  with `./gradlew mockPsp -Pport=9090` if you just want something on :9090 that
+  speaks the authorization/capture protocol without the settlement machinery.
 
 ### Demo: a timeout, and the system healing itself
 

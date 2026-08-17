@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: mock-psp
+
+server:
+  port: 9090
+
+mockpsp:
+  chaos:
+    decline-rate: 0.10
+    error-rate: 0.10
+    timeout-rate: 0.10
+    base-latency-ms: 50
+    timeout-delay-ms: 8000
+
+logging:
+  level:
+    am.ankap.mockpsp: INFO
