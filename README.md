@@ -1,5 +1,7 @@
 # LedgerFlow
 
+[![CI](https://github.com/Vhovsepyan/ledgerflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Vhovsepyan/ledgerflow/actions/workflows/ci.yml)
+
 A payment orchestration service with a double-entry ledger.
 
 A merchant creates a payment, the service authorizes and captures it through a
@@ -732,6 +734,9 @@ Errors use RFC 9457 `application/problem+json`:
   "retryable": false
 }
 ```
+
+The `https://ledgerflow.dev/errors/...` URIs are stable identifiers for the
+error `type`, not resolvable documentation pages — nothing is hosted there.
 
 Amounts cross the API as minor units plus a currency code, never as decimals —
 a JSON number like `12.30` can lose precision in a client's parser before it
