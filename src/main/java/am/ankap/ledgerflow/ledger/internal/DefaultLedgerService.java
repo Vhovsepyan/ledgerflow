@@ -5,8 +5,6 @@ import am.ankap.ledgerflow.shared.Money;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.Collection;
 import java.util.Currency;
 import java.util.List;
 import java.util.Optional;
@@ -74,17 +72,8 @@ class DefaultLedgerService implements LedgerService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CapturedAmount> capturedAmountsFor(Collection<UUID> sourceIds) {
-        if (sourceIds.isEmpty()) {
-            return List.of();   // an empty IN list is not valid SQL
-        }
-        return entryRepository.findCapturedAmountsForSources("payment", sourceIds);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<CapturedAmount> capturedAmountsSince(Instant since) {
-        return entryRepository.findCapturedAmountsSince("payment", since);
+    public List<CapturedAmount> capturedAmounts() {
+        return entryRepository.findCapturedAmounts("payment");
     }
 
     private LedgerAccountEntity requireAccount(String accountKey) {

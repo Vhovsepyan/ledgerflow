@@ -821,21 +821,16 @@ Deliberate, and listed here rather than hidden.
 - **The settlement statement parser is naive**: `split(",")` with no quoting or
   escaping support. It refuses a short row rather than guessing, which is the
   important half, but a quoted comma would break it.
-- **The unsettled-capture scan is bounded by a fixed 30-day lookback.** Matching
-  a statement now asks the ledger only about the payment ids that statement
-  mentions, so that half is proportional to the statement. The other half —
-  "what have we captured that the provider has not settled?" — has to look at
-  our own side, and it looks back 30 days (`UNSETTLED_LOOKBACK`). A capture older
-  than that which is still unsettled was already reported by an earlier run and
-  stays `OPEN` until a human closes it, so nothing is lost on a system that has
-  been reconciling all along. On a first run against an old database, anything
-  older than the window is never reported at all. Like the 24-hour settlement
-  lag, it is a hard-coded judgement rather than a configured one.
-- **The comparison phase of reconciliation is still one transaction**, sized by
-  the statement plus 30 days of captures. The provider fetch no longer happens
-  inside it — `reconcile()` orchestrates without a transaction and `ReconWriter`
-  owns the database work — so nothing waits on the network while holding a
-  connection.
+- **Reconciliation loads every captured payment into memory** on each run —
+  `capturedAmounts()` is unbounded and returns the whole history, not one day of
+  it. Fine at demo scale, wrong at any real scale, and the fix (filtering by
+  date) needs capture timestamps in the ledger query.
+- **The comparison phase of reconciliation is still one transaction**, and its
+  size grows with the statement and with the captured history it loads. The
+  provider fetch no longer happens inside it — `reconcile()` orchestrates
+  without a transaction and `ReconWriter` owns the database work — so nothing
+  waits on the network while holding a connection. What remains is bounded by
+  the unbounded `capturedAmounts()` query above, and shrinks when that does.
 
 **Correctness gaps**
 
