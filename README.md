@@ -77,25 +77,19 @@ Taken from the `@ApplicationModule` declarations, exactly as written:
 | `psp` | `shared` |
 | `outbox` | `shared` |
 | `webhook` | `shared` |
-| `ledger` | *no `@ApplicationModule` declaration* |
-| `shared` | *no `@ApplicationModule` declaration* |
+| `ledger` | `shared` |
+| `shared` | *none* |
 
 The intended rule is one-way: `payment` may use `ledger`, and `ledger` may only
 use `shared`. The ledger does not know that payments exist — it takes a source
 type, a source id and an operation, and has no idea what any of them mean.
 
-Half of that rule is enforced and half is not, which is worth being precise
-about:
-
-- **Enforced.** `payment` names `ledger` in its allow-list, so the direction
-  `payment → ledger` is legal and `ledger → payment` is not. `psp`, `outbox` and
-  `webhook` may touch only `shared`, so none of them can reach back into
-  `payment`. Breaking any of these fails `ModularityTests`.
-- **Not enforced.** `ledger` and `shared` carry no `@ApplicationModule`
-  annotation at all, so Modulith applies no allow-list to them. In practice
-  `ledger` imports only `shared` and `shared` imports nothing — but that is
-  discipline, not a build failure waiting to happen. Adding the annotation to
-  both would close the gap in two lines.
+That rule is enforced end to end: `payment` names `ledger` in its allow-list,
+so the direction `payment → ledger` is legal and `ledger → payment` is not.
+`psp`, `outbox` and `webhook` may touch only `shared`, so none of them can
+reach back into `payment`. `ledger` names only `shared` in its allow-list, and
+`shared` declares no allowed dependencies at all. Breaking any of these fails
+`ModularityTests`.
 
 Two more things the module graph does not tell you:
 
